@@ -1,0 +1,15 @@
+{
+  "name": "PrivChatCocosDemo",
+  "uuid": "ece31526-03ff-4dc6-8306-da6676b0a75b",
+  "creator": {
+    "version": "3.8.8"
+  },
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@privchat/cocos": "file:../privchat-cocos",
+    "@privchat/sdk": "file:../privchat-sdk-typescript"
+  }
+}
