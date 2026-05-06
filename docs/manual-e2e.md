@@ -63,15 +63,113 @@ To verify against a real PrivChat server:
    - [ ] **B2** History scroll-up triggers `loadMore` (only if the channel has older messages).
    - [ ] **B3** Network drop / reconnect doesn't crash the UI.
 
+## Customizing the theme (colors, radius, font sizes)
+
+`@privchat/cocos` doesn't hard-code colors — pass a `ThemeConfig` object
+to `mountChatView` and the renderer styles itself accordingly. **The main
+path is: pass `theme` at mount time.**
+
+### Example 1: completely custom theme
+
+```ts
+import { PrivchatCocos, type ThemeConfig } from '@privchat/cocos';
+
+const MyTheme: ThemeConfig = {
+  colors: {
+    background:    '#0d1117',
+    surface:       '#161b22',
+    primary:       '#58a6ff',
+    textPrimary:   '#e6edf3',
+    textSecondary: '#8b949e',
+    bubbleMine:    '#1f6feb',
+    bubbleOther:   '#21262d',
+    danger:        '#f85149',
+  },
+  radius: { bubble: 16, input: 12 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16 },
+  fontSize: { message: 15, time: 11, input: 15 },
+};
+
+PrivchatCocos.mountChatView(this.chatRoot, {
+  client,
+  channelId: '10001',
+  channelType: 1,
+  theme: MyTheme,
+});
+```
+
+### Example 2: spread the default and override a few colors
+
+```ts
+import { PrivchatCocos, PrivchatDarkTheme } from '@privchat/cocos';
+
+PrivchatCocos.mountChatView(this.chatRoot, {
+  client,
+  channelId: '10001',
+  channelType: 1,
+  theme: {
+    ...PrivchatDarkTheme,
+    colors: {
+      ...PrivchatDarkTheme.colors,
+      bubbleMine: '#7e22ce',
+      primary:    '#a855f7',
+    },
+  },
+});
+```
+
+### What the demo uses
+
+`DemoChatScene.ts` defines a `GoldGameTheme` constant and passes it.
+This shows that the demo isn't running on the default dark gray look —
+swap that constant for any palette you like.
+
+### What v0.1 does NOT support
+
+- **Runtime theme switching.** Pass `theme` once at `mountChatView`. To
+  change theme, dispose the current ChatView and mount a new one.
+- **Partial / deep-merge theme.** `theme` is a complete `ThemeConfig`.
+  Use the spread pattern shown in Example 2 if you only want to tweak a
+  few values.
+- **Per-component overrides.** No CSS-like cascade. The whole ChatView
+  uses the single passed theme.
+
+### A few palette starting points
+
+```ts
+// iMessage blue
+{ bubbleMine: '#007AFF', bubbleOther: '#3A3A3C', primary: '#007AFF', textPrimary: '#FFFFFF', ... }
+
+// WeChat-ish green
+{ background: '#000', bubbleMine: '#95EC69', bubbleOther: '#222', primary: '#07C160', textPrimary: '#FFFFFF', ... }
+
+// Discord-ish purple
+{ background: '#36393F', surface: '#2F3136', bubbleMine: '#5865F2', bubbleOther: '#40444B', primary: '#5865F2', ... }
+
+// Gold (game): see DemoChatScene.ts
+```
+
+## Advanced: PrivchatRoot for context-based theme/client lookup
+
+For projects that mount multiple ChatViews and want them to share the same
+client and theme, you can attach a `PrivchatRoot` Component to a parent
+node and call `init(client, theme)` on it once. ChatViews mounted further
+down the node tree can omit the `client` (and `theme`) options and the
+library will walk up to find the `PrivchatRoot`. This is **advanced
+usage**; the main path remains `mountChatView({ client, theme })`.
+
 ## Known v0.1 limitations (not bugs)
 
-- Round-corner uses 9-slice with a runtime-generated SpriteFrame. On some
-  GPUs the tinting may differ slightly from a hand-authored 9-slice — this
-  is acceptable for v0.1.
-- VirtualList is **fixed-height only**. Long messages may visually clip; v0.3
-  introduces dynamic heights.
+- Round-corner uses `cc.Graphics.roundRect` (Cocos 3.7+); falls back to
+  square corners on older Cocos versions.
+- Long messages wrap up to **4 lines**; beyond that, text is visually
+  clipped at the bubble edge. v0.3 lifts this cap.
 - Image / voice / system message types render as `[image]` / `[voice]` /
   `[system]` placeholders by design (see `MessageVM.fallbackText`).
+- No runtime theme switching — change theme by disposing and re-mounting.
+- The outer ~8px ring of the input field isn't a click target (Cocos
+  HTML overlay only covers the inner content area). Click the middle of
+  the input to focus.
 
 ## Troubleshooting
 

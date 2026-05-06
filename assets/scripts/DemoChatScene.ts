@@ -1,9 +1,34 @@
 import { Component, Node, _decorator } from 'cc';
-import { PrivchatCocos, PrivchatDarkTheme } from '@privchat/cocos';
+import { PrivchatCocos, PrivchatDarkTheme, type ThemeConfig } from '@privchat/cocos';
 import { PrivchatClient } from '@privchat/sdk';
 import { DemoMockAdapter } from './DemoMockAdapter';
 
 const { ccclass, property } = _decorator;
+
+/**
+ * Game-flavored theme for the demo. Spread `PrivchatDarkTheme` first to keep
+ * radius / spacing / fontSize defaults, then override the colors that should
+ * read as "this is a game", not "default chat library".
+ *
+ * To use a different look, define another constant like this and pass it
+ * to `mountChatView({ theme })`. v0.1 does NOT support runtime theme
+ * switching — to change theme, dispose the current ChatView and mount a
+ * new one with the new theme.
+ */
+const GoldGameTheme: ThemeConfig = {
+  ...PrivchatDarkTheme,
+  colors: {
+    ...PrivchatDarkTheme.colors,
+    background:    '#1a1208',  // deep brown chat area
+    surface:       '#2c1f0f',  // input bar surface
+    primary:       '#e8b551',  // send button + accent (gold)
+    bubbleMine:    '#c89a44',  // self-sent (warm gold)
+    bubbleOther:   '#3d2e16',  // peer (dark earth)
+    textPrimary:   '#f5e6c8',  // off-white parchment
+    textSecondary: '#a08966',  // muted bronze
+    danger:        '#d9534f',
+  },
+};
 
 /**
  * Demo scene wiring for @privchat/cocos.
@@ -58,7 +83,7 @@ export class DemoChatScene extends Component {
         adapter: this.mockAdapter,
         channelId: this.channelId,
         channelType: this.channelType,
-        theme: PrivchatDarkTheme,
+        theme: GoldGameTheme,
         onError: (err) => console.warn('[DemoChatScene][mock] onError', err),
         onToast: (msg) => console.log('[DemoChatScene][mock] onToast', msg),
       });
@@ -76,7 +101,7 @@ export class DemoChatScene extends Component {
         client: this.client,
         channelId: this.channelId,
         channelType: this.channelType,
-        theme: PrivchatDarkTheme,
+        theme: GoldGameTheme,
         onError: (err) => console.warn('[DemoChatScene][real] onError', err),
         onToast: (msg) => console.log('[DemoChatScene][real] onToast', msg),
       });
