@@ -48,6 +48,14 @@ export class DemoMockAdapter implements PrivchatClientAdapter {
     rec({ from_uid: PEER_UID, content: '欢迎来到 PrivChat Cocos demo!' }),
     rec({ from_uid: SELF_UID, content: '我已经接进来了。', status: 'sent' }),
     rec({ from_uid: PEER_UID, content: '试试发条消息吧 — 这是 mock 模式，不连服务器。' }),
+    rec({ from_uid: SELF_UID, content: '收到，我先随便聊几句看看渲染。', status: 'sent' }),
+    rec({ from_uid: PEER_UID, content: '这是第五条消息。' }),
+    rec({ from_uid: SELF_UID, content: 'OK 继续测试一下滚动效果。', status: 'sent' }),
+    rec({ from_uid: PEER_UID, content: 'Cocos preview 应该能用滚轮上下翻。' }),
+    rec({ from_uid: SELF_UID, content: '我数一下条数：1 2 3 4 5 6 7 8。', status: 'sent' }),
+    rec({ from_uid: PEER_UID, content: '中英文混排测试 mixed text 测试。' }),
+    rec({ from_uid: SELF_UID, content: '气泡宽度应该刚好包住文字不缩字号。', status: 'sent' }),
+    rec({ from_uid: PEER_UID, content: '最后一条 mock，下面试试发新消息。' }),
   ];
   private localSeq = 0;
 
