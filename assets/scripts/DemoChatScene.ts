@@ -24,7 +24,8 @@ export class DemoChatScene extends Component {
 
   @property userId = '';
   @property token = '';
-  @property deviceId = 'cocos-demo';
+  @property({ tooltip: 'Leave empty to auto-generate a UUID at runtime. On real device, host should pass the platform-specific device id.' })
+  deviceId = '';
   @property channelId = 'demo-channel';
   @property({ tooltip: '1 = direct, 2 = room' })
   channelType = 1;
@@ -36,10 +37,19 @@ export class DemoChatScene extends Component {
   private mockAdapter: DemoMockAdapter | null = null;
   private client: PrivchatClient | null = null;
 
+  onLoad(): void {
+    console.log('[DemoChatScene] onLoad — Component instantiated. useMock=' + this.useMock);
+  }
+
   async start(): Promise<void> {
+    console.log('[DemoChatScene] start — chatRoot=' + (this.chatRoot ? this.chatRoot.name : 'null'));
     if (!this.chatRoot) {
       console.error('[DemoChatScene] chatRoot is not assigned in the inspector.');
       return;
+    }
+    if (!this.deviceId) {
+      this.deviceId = generateDeviceId();
+      console.log('[DemoChatScene] auto-generated deviceId=' + this.deviceId);
     }
 
     if (this.useMock) {
@@ -85,4 +95,29 @@ export class DemoChatScene extends Component {
     (this.client as unknown as { disconnect?: () => void } | null)?.disconnect?.();
     this.client = null;
   }
+}
+
+/**
+ * Generate a stable-ish device id for demo use. Tries crypto.randomUUID()
+ * first; falls back to RFC4122-flavored v4 random if unavailable.
+ *
+ * On real iOS/Android devices, the host integration should pass the
+ * platform-specific device id (IDFV / Android ID / etc.) instead of
+ * generating one here.
+ */
+function generateDeviceId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID) {
+    return 'demo-' + c.randomUUID();
+  }
+  // Fallback v4-ish UUID
+  const hex = '0123456789abcdef';
+  let uuid = '';
+  for (let i = 0; i < 32; i++) {
+    if (i === 8 || i === 12 || i === 16 || i === 20) uuid += '-';
+    if (i === 12) uuid += '4';
+    else if (i === 16) uuid += hex[8 + Math.floor(Math.random() * 4)];
+    else uuid += hex[Math.floor(Math.random() * 16)];
+  }
+  return 'demo-' + uuid;
 }
