@@ -27,40 +27,65 @@ Cocos Creator 3.8.8.
 4. Click `Canvas` (or any node you want the script lifecycle on). In Properties:
    - `Add Component` → `Custom Script` → `DemoChatScene`.
 5. In the `DemoChatScene` component fields:
-   - `useMock`: ✅ checked (default)
+   - `useMock`: ✅ checked (default — uses `DemoMockAdapter` + `DemoFriendsSource`, no server)
+   - `serverUrl`: `ws://127.0.0.1:9080/` (only used when `useMock` is unchecked)
+   - `deviceId`: leave empty — the script regenerates a UUID v4 if invalid
+   - `defaultRoomChannelId`: `100` (prefilled in the Room subscription panel)
    - `chatRoot`: drag the `ChatRoot` node from Hierarchy
-   - `channelId`: leave as `demo-channel`
-   - `channelType`: leave as `1`
 6. Save the scene (`Cmd-S`).
 
 ## Run (mock mode — no server needed)
 
 1. Top toolbar → `Preview in Browser`.
-2. The browser opens with a chat UI inside `ChatRoot`. You should see:
-   - Three pre-canned messages (peer / self / peer).
-   - A bottom input bar with placeholder.
-   - The "发送" button on the right.
+2. **Login page** mounts inside `ChatRoot`. Type any username/password
+   (the mock accepts everything) → tap **登录**.
+3. **Menu page** appears with three controls: 「好友列表 / 聊天」,
+   「Room 订阅测试」, 「退出登录」.
+4. Tap 「好友列表 / 聊天」 → contact list with 4 friends (艾莉丝, Bob,
+   Charlie, David) + 「系统通知」-style entries if any. Status dots
+   cycle every 6 s (online / offline / unknown).
+5. Pick a friend → chat view with three pre-canned messages.
+6. Tap 「< 返回」 in the chat header → back to friend list.
+7. Tap 「< 菜单」 (top-left floating pill) → back to menu.
+8. Tap 「Room 订阅测试」 → see the warning *"Room subscription requires
+   real-SDK mode"* in console (mock mode has no real subscribe wire).
 
-## v0.1 manual E2E checklist
+## v0.1.1 manual E2E checklist (mock mode)
 
-- [ ] **A1** Three canned messages render on initial load (peer-mine-peer pattern).
-- [ ] **A2** Typing in the input box updates the controller draft (no visible toast).
-- [ ] **A3** Click `发送` (or press Enter) → a new bubble appears as "isMine"; input clears.
-- [ ] **A4** No console errors during initial mount.
-- [ ] **A5** Stop the preview / close the browser tab → no `[DemoChatScene]` errors in the console after exit. (If the editor stays open, watch logs as you switch scenes.)
-- [ ] **A6** Switch the active scene to a non-demo scene → `onDestroy` runs → no `[DemoChatScene]` warnings.
-- [ ] **A7** Reopen `Demo.scene` and re-preview → no leftover state from previous run.
+- [ ] **A1** Login page renders; tapping 登录 advances to menu page.
+- [ ] **A2** Menu shows greeting with submitted username + two large
+      entries + bottom 退出登录 button.
+- [ ] **A3** 好友列表 entry: 4 friends visible, names resolve correctly
+      (艾莉丝, Bob, Charlie, David). Status dots animate.
+- [ ] **A4** Pick a friend → chat view with seeded messages. 发送 a
+      message → bubble appears as `isMine`, input clears.
+- [ ] **A5** Chat header `< 返回` → back to friend list with new message
+      reflected in… (mock doesn't surface preview, but sort still
+      reflects last activity).
+- [ ] **A6** Friends-page `< 菜单` floating pill → back to menu.
+- [ ] **A7** Menu → 退出登录 → returns to login page; new login round-
+      trips correctly (mockAdapter / mockFriendsSource state is reset).
+- [ ] **A8** No `[DemoChatScene]` errors in console at any transition.
+- [ ] **A9** Stop preview → onDestroy runs cleanly, no warnings.
 
-## Real-SDK mode (optional)
+## Real-SDK mode (required for Room subscription)
 
-To verify against a real PrivChat server:
-
-1. Set `useMock` = ❌
-2. Fill `serverUrl`, `userId`, `token`, `deviceId`, `channelId`, `channelType`
-3. Save scene, preview again.
-4. Bonus checklist:
+1. In the inspector, uncheck `useMock`.
+2. Set `serverUrl` to your gateway's WebSocket URL.
+3. Pre-create a Room channel server-side (see
+   [`room-subscription-e2e.md`](./room-subscription-e2e.md) for the
+   `curl POST /api/admin/room` command).
+4. Preview, log in with **real** credentials.
+5. From the menu:
+   - 「好友列表 / 聊天」 — see your real channel list. Names lazy-fetch
+     via `account/user/detail` so first paint is "loading…" until names
+     arrive (default `awaitProfilesOnGetList: true`).
+   - 「Room 订阅测试」 — see [`room-subscription-e2e.md`](./room-subscription-e2e.md)
+     for the full Room flow (subscribe / unsubscribe / status banner).
+6. Bonus checklist (chat):
    - [ ] **B1** Inbound message from another peer appears in real time.
-   - [ ] **B2** History scroll-up triggers `loadMore` (only if the channel has older messages).
+   - [ ] **B2** History scroll-up triggers `loadMore` (only if the
+         channel has older messages).
    - [ ] **B3** Network drop / reconnect doesn't crash the UI.
 
 ## Customizing the theme (colors, radius, font sizes)
@@ -170,6 +195,18 @@ usage**; the main path remains `mountChatView({ client, theme })`.
 - The outer ~8px ring of the input field isn't a click target (Cocos
   HTML overlay only covers the inner content area). Click the middle of
   the input to focus.
+- **Conversation switch reloads the chat view.** The demo intentionally
+  remounts ChatView on each navigation to keep lifecycle simple — the
+  push-pop friends ↔ chat flow reclaims the same root node, so even an
+  in-place controller swap couldn't avoid view destruction. **This is
+  not the recommended pattern for production**: ship UIs that keep a
+  chat surface mounted (split-screen, sidebar, ChatPanel) should hold
+  the `controller` returned by `mountChatView` and call
+  `controller.setChannel(channelId, channelType)` to swap conversations
+  without UI rebuild. Data layer is already cache-first (IndexedDB
+  window emits before the server's `message/history/get` round-trip
+  resolves), so the visible "reload" is purely a view-recreation
+  artifact, not a network re-fetch of message bodies.
 
 ## Troubleshooting
 
