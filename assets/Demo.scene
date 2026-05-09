@@ -353,13 +353,9 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "useMock": true,
-    "serverUrl": "tcp://127.0.0.1:9001",
-    "userId": "",
-    "token": "",
+    "useMock": false,
+    "serverUrl": "ws://127.0.0.1:9080",
     "deviceId": "cocos-demo",
-    "channelId": "demo-channel",
-    "channelType": 1,
     "chatRoot": {
       "__id__": 5
     },
