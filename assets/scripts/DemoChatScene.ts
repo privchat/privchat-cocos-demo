@@ -13,6 +13,7 @@ import { DemoFriendsSource } from './DemoFriendsSource';
 import { createLoginPage, type LoginCredentials } from './LoginPage';
 import { createMenuPage } from './MenuPage';
 import { createRoomPanel } from './RoomPanel';
+import { createFloatingChatDemo } from './FloatingChatDemo';
 
 const { ccclass, property } = _decorator;
 
@@ -36,7 +37,7 @@ const GoldGameTheme: ThemeConfig = {
   },
 };
 
-type Page = 'login' | 'menu' | 'friends' | 'chat' | 'room';
+type Page = 'login' | 'menu' | 'friends' | 'chat' | 'room' | 'floating';
 
 /**
  * Demo scene wiring for @privchat/cocos.
@@ -217,7 +218,34 @@ export class DemoChatScene extends Component {
       username: this.sessionLabel,
       onOpenFriends: () => this.showFriends(),
       onOpenRoom: () => this.showRoom(),
+      onOpenFloating: () => this.showFloating(),
       onLogout: () => this.logout(),
+    });
+  }
+
+  private showFloating(): void {
+    if (!this.chatRoot) return;
+    if (this.useMock || !this.client) {
+      // openChatWindow demo needs a real client — DemoMockAdapter has
+      // no openConversation/observe wire that actually emits messages,
+      // so mock-mode windows would render empty timelines. Surface
+      // the limitation instead of silently doing the wrong thing.
+      console.warn(
+        '[DemoChatScene] 悬浮聊天测试 requires real-SDK mode (uncheck `useMock`).',
+      );
+      return;
+    }
+    this.disposeCurrent();
+    this.currentPage = 'floating';
+    this.currentMount = createFloatingChatDemo({
+      root: this.chatRoot,
+      theme: GoldGameTheme,
+      client: this.client,
+      // Windows mount on the same chatRoot as the demo page itself —
+      // they paint above sibling-index-wise so the menu/page UI behind
+      // is visible (or covered, when modal=true).
+      windowParent: this.chatRoot,
+      onBack: () => this.showMenu(),
     });
   }
 

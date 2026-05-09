@@ -19,6 +19,7 @@ export interface MenuPageOptions {
   username: string;
   onOpenFriends: () => void;
   onOpenRoom: () => void;
+  onOpenFloating: () => void;
   onLogout: () => void;
 }
 
@@ -36,7 +37,15 @@ const SUBTITLE_FONT = 13;
 const ENTRY_FONT = 17;
 
 export function createMenuPage(opts: MenuPageOptions): MenuPageHandle {
-  const { root, theme, username, onOpenFriends, onOpenRoom, onLogout } = opts;
+  const {
+    root,
+    theme,
+    username,
+    onOpenFriends,
+    onOpenRoom,
+    onOpenFloating,
+    onLogout,
+  } = opts;
   const ui = root.getComponent(UITransform) ?? root.addComponent(UITransform);
   const width = ui.width || 360;
   const height = ui.height || 640;
@@ -119,6 +128,25 @@ export function createMenuPage(opts: MenuPageOptions): MenuPageHandle {
   root.addChild(entryRoom);
   owned.push(entryRoom);
 
+  // v0.1.2: openChatWindow demo. Same shape as the other two entries
+  // so the menu reads as a uniform list.
+  const entryFloating = createListEntry({
+    name: 'EntryFloating',
+    title: '悬浮聊天测试',
+    subtitle: 'openChatWindow → 任意位置弹出独立聊天窗口',
+    width: ENTRY_W,
+    height: ENTRY_H,
+    bgColor: lighten(colorSurface, 0.2),
+    titleColor: colorText,
+    subtitleColor: colorSecondary,
+    accent: colorPrimary,
+    accentLetter: '窗',
+  });
+  entryFloating.setPosition(0, entriesTopY - 2 * (ENTRY_H + ENTRY_GAP));
+  entryFloating.on('click', onOpenFloating);
+  root.addChild(entryFloating);
+  owned.push(entryFloating);
+
   // Logout — secondary, near the bottom edge.
   const logoutBtn = createButton({
     name: 'LogoutBtn',
@@ -142,6 +170,7 @@ export function createMenuPage(opts: MenuPageOptions): MenuPageHandle {
       // every minor version of 3.8.x.
       entryFriends.off('click', onOpenFriends);
       entryRoom.off('click', onOpenRoom);
+      entryFloating.off('click', onOpenFloating);
       logoutBtn.off('click', onLogout);
       for (const n of owned) {
         n.removeFromParent();
