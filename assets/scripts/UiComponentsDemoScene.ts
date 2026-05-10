@@ -41,6 +41,11 @@ const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
 const TITLE_FONT_BOOST = 4;
 const SECTION_GAP = 16;
+/** Max width of the working content column. On a 1280×720 desktop
+ *  canvas the demo renders centered inside a 480-wide phone-preview
+ *  column rather than stretching across the whole screen (which makes
+ *  every horizontal control look unnaturally far apart). */
+const CONTENT_MAX_W = 480;
 
 @ccclass('UiComponentsDemoScene')
 export class UiComponentsDemoScene extends Component {
@@ -68,41 +73,41 @@ export class UiComponentsDemoScene extends Component {
   private build(): void {
     if (!this.uiRoot) return;
     const ui = this.uiRoot.getComponent(UITransform) ?? this.uiRoot.addComponent(UITransform);
-    // Guard against a too-small container (the common手滑: bind
-    // uiRoot to a fresh empty Node whose default UITransform is
-    // 100×100 → all UI is squeezed into that tiny box and looks
-    // blank). Force a sensible canvas-sized fallback and warn.
     const MIN_DIM = 240;
-    let width = ui.width;
-    let height = ui.height;
-    if (width < MIN_DIM || height < MIN_DIM) {
+    let canvasW = ui.width;
+    let canvasH = ui.height;
+    if (canvasW < MIN_DIM || canvasH < MIN_DIM) {
       console.warn(
-        `[UiComponentsDemoScene] uiRoot UITransform is ${width}×${height} ` +
+        `[UiComponentsDemoScene] uiRoot UITransform is ${canvasW}×${canvasH} ` +
         `(too small). Falling back to 720×1280. To fix: bind uiRoot to your ` +
         `Canvas node, or set the bound Node's Content Size to your design ` +
         `resolution.`,
       );
-      width = 720;
-      height = 1280;
-      ui.setContentSize(width, height);
+      canvasW = 720;
+      canvasH = 1280;
+      ui.setContentSize(canvasW, canvasH);
     }
+    // The demo content is mobile-first. Cap the working width at
+    // CONTENT_MAX_W and center it inside the canvas — on a wide
+    // landscape canvas (e.g., 1280×720) you get a centered "phone
+    // preview" column with empty side gutters; on a portrait
+    // canvas it just fills.
+    const contentWidth = Math.min(canvasW, CONTENT_MAX_W);
+    const height = canvasH;
     const theme = this.theme;
 
-    // Title row.
     const title = makeLabel('UI Components Demo', {
       theme,
-      width,
+      width: contentWidth,
       fontSize: theme.fontSize.lg + TITLE_FONT_BOOST,
       align: 'center',
     });
     title.setPosition(0, height / 2 - TITLE_HEIGHT / 2 - 8);
     this.uiRoot.addChild(title);
 
-    // Tabs control. Generic over TabKey so the resolver pins on
-    // string literals — typo'd keys fail the typecheck.
     const tabsHandle = createTabs<TabKey>({
       theme,
-      width,
+      width: contentWidth,
       height: TAB_BAR_HEIGHT,
       tabs: [
         { key: 'inputs', label: 'Inputs' },
@@ -120,12 +125,13 @@ export class UiComponentsDemoScene extends Component {
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
 
-    // Body container — every tab renders its content into here. We
-    // dispose + clear it on tab change.
+    // Body container sized to the content column (not full canvas)
+    // so per-tab factories can use width-relative layouts without
+    // the BottomNav stretching across an empty 1920px desktop.
     const body = new Node('UiDemo_body');
     const bodyUi = body.addComponent(UITransform);
     const bodyHeight = height - TITLE_HEIGHT - TAB_BAR_HEIGHT - 12;
-    bodyUi.setContentSize(width, bodyHeight);
+    bodyUi.setContentSize(contentWidth, bodyHeight);
     body.setPosition(0, -TITLE_HEIGHT / 2 - TAB_BAR_HEIGHT / 2 - 4);
     this.uiRoot.addChild(body);
     this.bodyNode = body;
@@ -212,16 +218,21 @@ interface TabContext {
 
 function renderInputsTab(ctx: TabContext): void {
   const { theme, parent, width } = ctx;
+  // Per-row leading edge for left-aligned controls (checkboxes,
+  // radio-group). Centered controls (slider, switch row) use 0.
+  const leftEdge = -width / 2 + 24;
   let y = ctx.height / 2 - 28;
+
+  const rowWidth = width - 48;
 
   const cb1 = createCheckbox({
     theme,
     label: 'Receive notifications',
     checked: true,
-    width: 280,
+    width: rowWidth,
     onChange: (v) => console.log('[demo] checkbox-1', v),
   });
-  cb1.node.setPosition(0, y);
+  cb1.node.setPosition(leftEdge + rowWidth / 2, y);
   parent.addChild(cb1.node);
   ctx.register(cb1);
 
@@ -229,10 +240,10 @@ function renderInputsTab(ctx: TabContext): void {
   const cb2 = createCheckbox({
     theme,
     label: 'Auto-join voice',
-    width: 280,
+    width: rowWidth,
     onChange: (v) => console.log('[demo] checkbox-2', v),
   });
-  cb2.node.setPosition(0, y);
+  cb2.node.setPosition(leftEdge + rowWidth / 2, y);
   parent.addChild(cb2.node);
   ctx.register(cb2);
 
@@ -242,10 +253,10 @@ function renderInputsTab(ctx: TabContext): void {
     label: 'Disabled checkbox',
     checked: true,
     disabled: true,
-    width: 280,
+    width: rowWidth,
     onChange: () => { /* should never fire */ },
   });
-  cb3.node.setPosition(0, y);
+  cb3.node.setPosition(leftEdge + rowWidth / 2, y);
   parent.addChild(cb3.node);
   ctx.register(cb3);
 
@@ -258,10 +269,10 @@ function renderInputsTab(ctx: TabContext): void {
       { value: 'hard', label: '高手场' },
     ],
     value: 'normal',
-    width: 280,
+    width: rowWidth,
     onChange: (v) => console.log('[demo] radio', v),
   });
-  radio.node.setPosition(0, y - 10);
+  radio.node.setPosition(leftEdge + rowWidth / 2, y - 10);
   parent.addChild(radio.node);
   ctx.register(radio);
 
@@ -301,29 +312,25 @@ function renderInputsTab(ctx: TabContext): void {
     max: 100,
     step: 5,
     value: 30,
-    width: 240,
+    width: Math.min(rowWidth, 320),
     onChange: (v) => console.log('[demo] slider drag', v),
     onCommit: (v) => console.log('[demo] slider commit', v),
   });
   slider.node.setPosition(0, y);
   parent.addChild(slider.node);
   ctx.register(slider);
-
-  // Kept off-screen reference suppresses unused-var warning if a
-  // future refactor drops `width`. (parent is centered so slider
-  // doesn't actually need the width, but keep the value live.)
-  void width;
 }
 
 // ---- Tab: Navigation ----
 
 function renderNavigationTab(ctx: TabContext): void {
   const { theme, parent, width, height } = ctx;
+  const innerWidth = width - 48;
   let y = height / 2 - 32;
 
   const innerTabs = createTabs<string>({
     theme,
-    width: 320,
+    width: innerWidth,
     tabs: [
       { key: 'list', label: '列表' },
       { key: 'rooms', label: '房间' },
@@ -336,10 +343,9 @@ function renderNavigationTab(ctx: TabContext): void {
   ctx.register(innerTabs);
 
   y -= 60;
-  // A second Tabs sample with disabled state.
   const innerTabs2 = createTabs<string>({
     theme,
-    width: 320,
+    width: innerWidth,
     tabs: [
       { key: 'a', label: 'A' },
       { key: 'b', label: 'B' },
@@ -354,7 +360,6 @@ function renderNavigationTab(ctx: TabContext): void {
   parent.addChild(innerTabs2.node);
   ctx.register(innerTabs2);
 
-  // BottomNav pinned to the bottom of the body container.
   const bottomNav = createBottomNav<string>({
     theme,
     width,
