@@ -20,12 +20,17 @@ import {
   createBottomNav,
   createBottomSheet,
   createButtonBase,
+  createCard,
   createCheckbox,
   createCountdownRing,
   createDialog,
+  createDivider,
+  createDropdown,
+  createListRow,
   createLoadingSpinner,
   createProgressBar,
   createRadioGroup,
+  createSectionHeader,
   createSlider,
   createSwitch,
   createTabs,
@@ -38,7 +43,7 @@ import {
 
 const { ccclass, property } = _decorator;
 
-type TabKey = 'inputs' | 'navigation' | 'display' | 'overlay' | 'poker';
+type TabKey = 'inputs' | 'navigation' | 'display' | 'overlay' | 'settings' | 'poker';
 
 const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
@@ -107,6 +112,7 @@ export class UiComponentsDemoScene extends Component {
         { key: 'navigation', label: 'Navigation' },
         { key: 'display', label: 'Display' },
         { key: 'overlay', label: 'Overlay' },
+        { key: 'settings', label: 'Settings' },
         { key: 'poker', label: 'Poker Feedback' },
       ],
       activeKey: this.currentTab,
@@ -150,6 +156,7 @@ export class UiComponentsDemoScene extends Component {
       case 'navigation': renderNavigationTab(ctx); break;
       case 'display': renderDisplayTab(ctx); break;
       case 'overlay': renderOverlayTab(ctx); break;
+      case 'settings': renderSettingsTab(ctx); break;
       case 'poker': renderPokerTab(ctx); break;
     }
   }
@@ -657,6 +664,254 @@ function renderOverlayTab(ctx: TabContext): void {
   animateBtn.node.setPosition(leftEdge + 70, y);
   parent.addChild(animateBtn.node);
   ctx.register(animateBtn);
+}
+
+// ---- Tab: Settings (Phase F) ----
+//
+// Realistic 3-Card settings screen, NOT a primitives catalog. The
+// Phase F acceptance criterion is "this looks like a real game
+// settings page", so the layout follows iOS/Material settings
+// convention: SectionHeader → Card containing ListRows separated
+// by Dividers, with Dropdowns embedded inline.
+
+function renderSettingsTab(ctx: TabContext): void {
+  const { theme, parent, width, height, uiRoot } = ctx;
+  const COL_WIDTH = Math.min(width - 40, 480);
+  const ROW_HEIGHT = 56;
+  const SECTION_HEADER_GAP = 4;
+  const CARD_GAP = 16;
+
+  // Vertical cursor — descends as each section is laid out.
+  let cursorY = height / 2 - 20;
+
+  // ---- Section: 账户 ----
+  cursorY = mountSectionHeader(parent, ctx, cursorY, COL_WIDTH, '账户');
+  cursorY -= SECTION_HEADER_GAP;
+
+  // Card body height: 3 ListRows + 1 Divider between row 2 and 3
+  // (the Dropdown). Card adds its own padding (theme.spacing.md=12)
+  // top + bottom inside contentNode, so the card needs to be tall
+  // enough to fit content + 2*padding.
+  const acctRows = 3;
+  const acctDividers = 1;
+  const acctCardHeight = ROW_HEIGHT * acctRows + 1 * acctDividers + theme.spacing.md * 2;
+  const acctCard = createCard({
+    parent,
+    theme,
+    width: COL_WIDTH,
+    height: acctCardHeight,
+  });
+  acctCard.node.setPosition(0, cursorY - acctCardHeight / 2);
+  ctx.register(acctCard);
+
+  // Populate the Card's contentNode. Children's coords are local
+  // to contentNode (origin = center of contentNode).
+  const acctInner = acctCard.contentNode;
+  const acctInnerW = COL_WIDTH - theme.spacing.md * 2;
+  let innerY = (acctCardHeight - theme.spacing.md * 2) / 2 - ROW_HEIGHT / 2;
+
+  const userRow = createListRow({
+    parent: acctInner,
+    theme,
+    width: acctInnerW,
+    label: '用户名',
+    value: 'Brian',
+    chevron: true,
+    onClick: () => console.log('[demo] settings → username'),
+  });
+  userRow.node.setPosition(0, innerY);
+  ctx.register(userRow);
+  innerY -= ROW_HEIGHT;
+
+  const idRow = createListRow({
+    parent: acctInner,
+    theme,
+    width: acctInnerW,
+    label: '用户 ID',
+    value: '10000192',
+  });
+  idRow.node.setPosition(0, innerY);
+  ctx.register(idRow);
+  innerY -= ROW_HEIGHT / 2;
+
+  const div1 = createDivider({
+    parent: acctInner,
+    theme,
+    width: acctInnerW,
+    insetLeft: 16,
+  });
+  div1.node.setPosition(0, innerY);
+  ctx.register(div1);
+  innerY -= ROW_HEIGHT / 2;
+
+  const langDropdown = createDropdown<string>({
+    parent: acctInner,
+    theme,
+    width: acctInnerW,
+    label: '语言',
+    value: 'zh-CN',
+    options: [
+      { value: 'zh-CN', label: '简体中文' },
+      { value: 'en-US', label: 'English' },
+      { value: 'ja-JP', label: '日本語', disabled: true },
+    ],
+    onChange: (v) => console.log('[demo] lang →', v),
+  });
+  langDropdown.node.setPosition(0, innerY);
+  ctx.register(langDropdown);
+
+  cursorY -= acctCardHeight + CARD_GAP;
+
+  // ---- Section: 游戏设置 ----
+  cursorY = mountSectionHeader(parent, ctx, cursorY, COL_WIDTH, '游戏设置');
+  cursorY -= SECTION_HEADER_GAP;
+
+  const gameRows = 3;
+  const gameCardHeight = ROW_HEIGHT * gameRows + theme.spacing.md * 2;
+  const gameCard = createCard({
+    parent,
+    theme,
+    width: COL_WIDTH,
+    height: gameCardHeight,
+  });
+  gameCard.node.setPosition(0, cursorY - gameCardHeight / 2);
+  ctx.register(gameCard);
+
+  const gameInner = gameCard.contentNode;
+  const gameInnerW = COL_WIDTH - theme.spacing.md * 2;
+  innerY = (gameCardHeight - theme.spacing.md * 2) / 2 - ROW_HEIGHT / 2;
+
+  const audioSwitch = createSwitch({
+    theme,
+    on: true,
+    onChange: (v) => console.log('[demo] audio', v),
+  });
+  const audioRow = createListRow({
+    parent: gameInner,
+    theme,
+    width: gameInnerW,
+    label: '音效',
+    trailing: audioSwitch.node,
+  });
+  audioRow.node.setPosition(0, innerY);
+  ctx.register(audioRow);
+  ctx.register(audioSwitch);
+  innerY -= ROW_HEIGHT;
+
+  const vibrationSwitch = createSwitch({
+    theme,
+    on: false,
+    onChange: (v) => console.log('[demo] vibration', v),
+  });
+  const vibrationRow = createListRow({
+    parent: gameInner,
+    theme,
+    width: gameInnerW,
+    label: '震动',
+    trailing: vibrationSwitch.node,
+  });
+  vibrationRow.node.setPosition(0, innerY);
+  ctx.register(vibrationRow);
+  ctx.register(vibrationSwitch);
+  innerY -= ROW_HEIGHT;
+
+  const themeDropdown = createDropdown<string>({
+    parent: gameInner,
+    theme,
+    width: gameInnerW,
+    label: '桌面主题',
+    value: 'gold',
+    options: [
+      { value: 'classic', label: '经典绿' },
+      { value: 'gold', label: '金色经典' },
+      { value: 'midnight', label: '午夜蓝' },
+    ],
+    onChange: (v) => console.log('[demo] theme →', v),
+  });
+  themeDropdown.node.setPosition(0, innerY);
+  ctx.register(themeDropdown);
+
+  cursorY -= gameCardHeight + CARD_GAP;
+
+  // ---- Section: 德州设置 ----
+  cursorY = mountSectionHeader(parent, ctx, cursorY, COL_WIDTH, '德州设置');
+  cursorY -= SECTION_HEADER_GAP;
+
+  const pokerRows = 2;
+  const pokerCardHeight = ROW_HEIGHT * pokerRows + theme.spacing.md * 2;
+  const pokerCard = createCard({
+    parent,
+    theme,
+    width: COL_WIDTH,
+    height: pokerCardHeight,
+  });
+  pokerCard.node.setPosition(0, cursorY - pokerCardHeight / 2);
+  ctx.register(pokerCard);
+
+  const pokerInner = pokerCard.contentNode;
+  const pokerInnerW = COL_WIDTH - theme.spacing.md * 2;
+  innerY = (pokerCardHeight - theme.spacing.md * 2) / 2 - ROW_HEIGHT / 2;
+
+  const autoBuyinSwitch = createSwitch({
+    theme,
+    on: true,
+    onChange: (v) => console.log('[demo] auto-buyin', v),
+  });
+  const autoBuyinRow = createListRow({
+    parent: pokerInner,
+    theme,
+    width: pokerInnerW,
+    label: '自动买入',
+    subtitle: '坐下时自动按默认筹码补齐',
+    trailing: autoBuyinSwitch.node,
+  });
+  autoBuyinRow.node.setPosition(0, innerY);
+  ctx.register(autoBuyinRow);
+  ctx.register(autoBuyinSwitch);
+  innerY -= ROW_HEIGHT;
+
+  const raiseDropdown = createDropdown<string>({
+    parent: pokerInner,
+    theme,
+    width: pokerInnerW,
+    label: '默认加注单位',
+    value: '2bb',
+    options: [
+      { value: 'min', label: 'Min Raise' },
+      { value: '2bb', label: '2 BB' },
+      { value: '3bb', label: '3 BB' },
+      { value: 'pot', label: 'Pot' },
+    ],
+    onChange: (v) => {
+      console.log('[demo] raise unit →', v);
+      showToast({ theme, parent: uiRoot, text: `加注单位已设为 ${v}`, kind: 'success' });
+    },
+  });
+  raiseDropdown.node.setPosition(0, innerY);
+  ctx.register(raiseDropdown);
+}
+
+/** Place a SectionHeader at `y` and return the bottom edge so the
+ *  caller can keep descending. */
+function mountSectionHeader(
+  parent: Node,
+  ctx: TabContext,
+  y: number,
+  width: number,
+  title: string,
+): number {
+  const header = createSectionHeader({
+    parent,
+    theme: ctx.theme,
+    width,
+    title,
+  });
+  // SectionHeader's UITransform is height=24 (single-line); position
+  // at y - 12 so its top edge sits at y.
+  const headerHeight = 24;
+  header.node.setPosition(0, y - headerHeight / 2);
+  ctx.register(header);
+  return y - headerHeight;
 }
 
 // ---- Tab: Poker Feedback (the showcase) ----
