@@ -867,13 +867,22 @@ function makeLabel(text: string, opts: MakeLabelOpts): Node {
   // The UI Kit doesn't expose a static `createLabel` (each component
   // builds its own). For demo headings we use cc.Label directly —
   // this is demo glue, not Tier-A surface.
+  //
+  // overflow: NONE + explicit lineHeight is critical: the SHRINK
+  // default would auto-scale the font down whenever container
+  // height (fs + 4) is less than the default lineHeight (~fs * 1.5),
+  // crushing demo captions ("底池", "Badges:", etc.) to ~10px and
+  // making them unreadable. Same trap class as the kit's components.
   const node = new Node('UiDemo_label');
   const ui = node.addComponent(UITransform);
   const fs = opts.fontSize ?? opts.theme.fontSize.md;
-  ui.setContentSize(opts.width, fs + 4);
+  // Bump container height to match the natural lineHeight so cc's
+  // vertical-center math has breathing room.
+  ui.setContentSize(opts.width, Math.round(fs * 1.5));
   const lbl = node.addComponent(Label);
   lbl.string = text;
   lbl.fontSize = fs;
+  (lbl as unknown as { lineHeight: number }).lineHeight = fs;
   const c = parseHexLocal(opts.theme.colors.textPrimary);
   lbl.color = new Color(c.r, c.g, c.b, c.a);
   lbl.horizontalAlign =
@@ -881,7 +890,7 @@ function makeLabel(text: string, opts: MakeLabelOpts): Node {
     opts.align === 'right' ? Label.HorizontalAlign.RIGHT :
     Label.HorizontalAlign.LEFT;
   lbl.verticalAlign = Label.VerticalAlign.CENTER;
-  lbl.overflow = Label.Overflow.SHRINK;
+  lbl.overflow = Label.Overflow.NONE;
   return node;
 }
 
