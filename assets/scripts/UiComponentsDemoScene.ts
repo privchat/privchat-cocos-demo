@@ -17,11 +17,14 @@ import {
   createAnimatedNumber,
   createAvatar,
   createBadge,
+  createBanner,
   createBottomNav,
   createBottomSheet,
   createButtonBase,
   createCard,
+  createCarousel,
   createCheckbox,
+  createCoachMark,
   createCountdownRing,
   createDialog,
   createDivider,
@@ -29,18 +32,23 @@ import {
   createEmptyState,
   createListRow,
   createLoadingSpinner,
+  createMarquee,
   createNumberInput,
   createProgressBar,
   createRetryView,
+  createRichTextView,
   createScrollView,
   createSkeleton,
   createStepper,
   createTextInput,
+  createTooltip,
   createRadioGroup,
   createSectionHeader,
   createSlider,
   createSwitch,
   createTabs,
+  showActionSheet,
+  showFloatingText,
   showToast,
   type AttentionHandle,
   type AvatarStatus,
@@ -50,7 +58,16 @@ import {
 
 const { ccclass, property } = _decorator;
 
-type TabKey = 'inputs' | 'navigation' | 'display' | 'overlay' | 'settings' | 'forms' | 'poker';
+type TabKey =
+  | 'inputs'
+  | 'navigation'
+  | 'display'
+  | 'overlay'
+  | 'settings'
+  | 'forms'
+  | 'liveops'
+  | 'guide'
+  | 'poker';
 
 const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
@@ -121,6 +138,8 @@ export class UiComponentsDemoScene extends Component {
         { key: 'overlay', label: 'Overlay' },
         { key: 'settings', label: 'Settings' },
         { key: 'forms', label: 'Forms & States' },
+        { key: 'liveops', label: 'Live Ops' },
+        { key: 'guide', label: 'Guide' },
         { key: 'poker', label: 'Poker Feedback' },
       ],
       activeKey: this.currentTab,
@@ -166,6 +185,8 @@ export class UiComponentsDemoScene extends Component {
       case 'overlay': renderOverlayTab(ctx); break;
       case 'settings': renderSettingsTab(ctx); break;
       case 'forms': renderFormsAndStatesTab(ctx); break;
+      case 'liveops': renderLiveOpsTab(ctx); break;
+      case 'guide': renderGuideTab(ctx); break;
       case 'poker': renderPokerTab(ctx); break;
     }
   }
@@ -1154,6 +1175,274 @@ function renderFormsAndStatesTab(ctx: TabContext): void {
   retry.node.setPosition(0, cursorY - emptyHeight / 2);
   ctx.register(retry);
   cursorY -= emptyHeight;
+
+  sv.setContentHeight(-cursorY + 32);
+}
+
+// ---- Tab: Live Ops (Phase G3) ----
+
+function renderLiveOpsTab(ctx: TabContext): void {
+  const { theme, parent, width, height } = ctx;
+  const COL_WIDTH = Math.min(width - 40, 480);
+  const SECTION_GAP = 20;
+
+  const sv = makeVerticalScrollViewport(parent, ctx, width, height);
+  const scrollContent = sv.content;
+  let cursorY = -16;
+
+  // Banner: 4 kinds stacked.
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '系统横幅 (Banner)');
+  cursorY -= 8;
+  const bannerKinds: Array<{ kind: 'info' | 'success' | 'warning' | 'danger'; title: string; subtitle?: string }> = [
+    { kind: 'info', title: '系统消息', subtitle: '今日凌晨 3:00 进行版本维护' },
+    { kind: 'success', title: '签到成功', subtitle: '获得 500 金币奖励' },
+    { kind: 'warning', title: '余额不足', subtitle: '请充值后继续游戏' },
+    { kind: 'danger', title: '网络已断开', subtitle: '正在尝试重连…' },
+  ];
+  const bannerHeight = 64;
+  for (const b of bannerKinds) {
+    cursorY -= 12;
+    const banner = createBanner({
+      parent: scrollContent,
+      theme,
+      width: COL_WIDTH,
+      kind: b.kind,
+      title: b.title,
+      subtitle: b.subtitle,
+      onDismiss: () => console.log('[demo] banner dismissed', b.kind),
+    });
+    banner.node.setPosition(0, cursorY - bannerHeight / 2);
+    ctx.register(banner);
+    cursorY -= bannerHeight;
+  }
+
+  // Marquee: scrolling broadcast.
+  cursorY -= SECTION_GAP;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '跑马灯 (Marquee)');
+  cursorY -= 8;
+  cursorY -= 12;
+  const marquee = createMarquee({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    height: 32,
+    text: '🎉 恭喜玩家 Brian 在德州扑克中赢得 $100,000 筹码！  ·  系统将于今晚 03:00 维护，请提前下线  ·  新春活动开启，登录送 1000 金币',
+    speed: 80,
+    background: theme.colors.surfaceElevated,
+  });
+  marquee.node.setPosition(0, cursorY - 16);
+  ctx.register(marquee);
+  cursorY -= 32;
+
+  // FloatingText trigger.
+  cursorY -= SECTION_GAP;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '飘字 (FloatingText)');
+  cursorY -= 8;
+  cursorY -= 12;
+  const floatBtn = createButtonBase({
+    theme,
+    label: '你赢了 +1000',
+    variant: 'primary',
+    width: 180,
+    height: 40,
+    onClick: () => {
+      // Spawn the floater above the button.
+      showFloatingText({
+        parent: scrollContent,
+        theme,
+        text: '+1000',
+        x: 0,
+        y: cursorY + 60,
+        color: theme.colors.success,
+        fontSize: 32,
+      });
+    },
+  });
+  floatBtn.node.setPosition(0, cursorY - 20);
+  ctx.register(floatBtn);
+  cursorY -= 40;
+
+  // Carousel: 4 placeholder activity slides. Each slide is a Node
+  // containing a Banner — dogfoods the kit's own primitive and
+  // gives us themed tint + title for free, without exposing
+  // createBackground / applyRoundedBackground from the library
+  // surface just for this demo.
+  cursorY -= SECTION_GAP;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '轮播 (Carousel)');
+  cursorY -= 8;
+  cursorY -= 12;
+  const carouselH = 160;
+  const slideTitles = ['新春活动', '比赛入口', 'VIP 礼包', '邀请好友赢筹码'];
+  const slideKinds: Array<'info' | 'success' | 'warning' | 'danger'> = ['info', 'success', 'warning', 'danger'];
+  const slides: Node[] = [];
+  for (let k = 0; k < 4; k++) {
+    const slide = new Node(`Slide_${k}`);
+    const su = slide.addComponent(UITransform);
+    su.setContentSize(COL_WIDTH, carouselH);
+    const banner = createBanner({
+      parent: slide,
+      theme,
+      width: COL_WIDTH,
+      kind: slideKinds[k] ?? 'info',
+      title: slideTitles[k] ?? `活动 ${k + 1}`,
+      subtitle: `点击查看详情 #${k + 1}`,
+      dismissible: false,
+    });
+    banner.node.setPosition(0, 0);
+    ctx.register(banner);
+    slides.push(slide);
+  }
+  const carousel = createCarousel({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    height: carouselH,
+    items: slides,
+    autoplay: true,
+    intervalMs: 4000,
+    onChange: (i) => console.log('[demo] carousel index', i),
+  });
+  carousel.node.setPosition(0, cursorY - carouselH / 2);
+  ctx.register(carousel);
+  cursorY -= carouselH;
+
+  // RichTextView.
+  cursorY -= SECTION_GAP;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '富文本 (RichTextView)');
+  cursorY -= 8;
+  const richH = 80;
+  cursorY -= 12;
+  const rich = createRichTextView({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    text: '<color=#e8eaed>德州扑克规则：</color><color=#52c41a>大盲</color>必须下注，<color=#faad14>小盲</color>下注一半，<b>底池</b>累加，最大牌型 = <color=#ff4d4f>皇家同花顺</color>。',
+  });
+  rich.node.setPosition(0, cursorY - richH / 2);
+  ctx.register(rich);
+  cursorY -= richH;
+
+  sv.setContentHeight(-cursorY + 32);
+}
+
+// ---- Tab: Guide (Phase G4) ----
+
+function renderGuideTab(ctx: TabContext): void {
+  const { theme, parent, width, height, uiRoot } = ctx;
+  const COL_WIDTH = Math.min(width - 40, 480);
+
+  const sv = makeVerticalScrollViewport(parent, ctx, width, height);
+  const scrollContent = sv.content;
+  let cursorY = -16;
+
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, 'ActionSheet');
+  cursorY -= 8;
+  cursorY -= 12;
+  const actionBtn = createButtonBase({
+    theme,
+    label: '打开玩家操作',
+    variant: 'primary',
+    width: 180,
+    height: 40,
+    onClick: () => {
+      showActionSheet({
+        parent: uiRoot,
+        theme,
+        title: '玩家操作',
+        actions: [
+          { label: '查看资料', onClick: () => console.log('[demo] action 查看资料') },
+          { label: '私聊', onClick: () => console.log('[demo] action 私聊') },
+          { label: '拉黑', variant: 'danger', onClick: () => console.log('[demo] action 拉黑') },
+        ],
+      });
+    },
+  });
+  actionBtn.node.setPosition(0, cursorY - 20);
+  ctx.register(actionBtn);
+  cursorY -= 40;
+
+  // Tooltip
+  cursorY -= 24;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, 'Tooltip');
+  cursorY -= 8;
+  cursorY -= 12;
+  let activeTooltip: { dispose(): void } | null = null;
+  const tooltipBtn = createButtonBase({
+    theme,
+    label: '点击显示 Tooltip',
+    variant: 'secondary',
+    width: 200,
+    height: 40,
+    onClick: () => {
+      if (activeTooltip) {
+        activeTooltip.dispose();
+        activeTooltip = null;
+        return;
+      }
+      activeTooltip = createTooltip({
+        parent: scrollContent,
+        theme,
+        target: tooltipBtn.node,
+        text: '这是一个 tooltip 解释',
+        placement: 'top',
+        durationMs: 4000,
+      });
+    },
+  });
+  tooltipBtn.node.setPosition(0, cursorY - 20);
+  ctx.register(tooltipBtn);
+  cursorY -= 40;
+
+  // CoachMark (3 steps walking through 3 buttons in this tab).
+  cursorY -= 24;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, 'CoachMark 新手引导');
+  cursorY -= 8;
+  cursorY -= 12;
+  // Three target buttons stacked, then a "start coach" button below.
+  const targets: Node[] = [];
+  for (let k = 0; k < 3; k++) {
+    const btn = createButtonBase({
+      theme,
+      label: `步骤 ${k + 1} 目标`,
+      variant: k === 0 ? 'primary' : k === 1 ? 'secondary' : 'ghost',
+      width: 180,
+      height: 40,
+      onClick: () => console.log('[demo] target', k),
+    });
+    btn.node.setPosition(0, cursorY - 20);
+    ctx.register(btn);
+    targets.push(btn.node);
+    cursorY -= 48;
+  }
+
+  cursorY -= 12;
+  const coachBtn = createButtonBase({
+    theme,
+    label: '启动新手引导',
+    variant: 'primary',
+    width: 180,
+    height: 40,
+    onClick: () => {
+      const target0 = targets[0];
+      const target1 = targets[1];
+      const target2 = targets[2];
+      if (!target0 || !target1 || !target2) return;
+      createCoachMark({
+        parent: uiRoot,
+        theme,
+        steps: [
+          { target: target0, text: '这是第一步——核心操作按钮', placement: 'right' },
+          { target: target1, text: '这里是次要操作，可选', placement: 'right' },
+          { target: target2, text: '最后这里是辅助选项', placement: 'right' },
+        ],
+        onFinish: () => console.log('[demo] coach finish'),
+        onSkip: () => console.log('[demo] coach skip'),
+      });
+    },
+  });
+  coachBtn.node.setPosition(0, cursorY - 20);
+  ctx.register(coachBtn);
+  cursorY -= 40;
 
   sv.setContentHeight(-cursorY + 32);
 }
