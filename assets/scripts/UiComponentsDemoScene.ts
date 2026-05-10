@@ -68,8 +68,24 @@ export class UiComponentsDemoScene extends Component {
   private build(): void {
     if (!this.uiRoot) return;
     const ui = this.uiRoot.getComponent(UITransform) ?? this.uiRoot.addComponent(UITransform);
-    const width = ui.width || 360;
-    const height = ui.height || 640;
+    // Guard against a too-small container (the common手滑: bind
+    // uiRoot to a fresh empty Node whose default UITransform is
+    // 100×100 → all UI is squeezed into that tiny box and looks
+    // blank). Force a sensible canvas-sized fallback and warn.
+    const MIN_DIM = 240;
+    let width = ui.width;
+    let height = ui.height;
+    if (width < MIN_DIM || height < MIN_DIM) {
+      console.warn(
+        `[UiComponentsDemoScene] uiRoot UITransform is ${width}×${height} ` +
+        `(too small). Falling back to 720×1280. To fix: bind uiRoot to your ` +
+        `Canvas node, or set the bound Node's Content Size to your design ` +
+        `resolution.`,
+      );
+      width = 720;
+      height = 1280;
+      ui.setContentSize(width, height);
+    }
     const theme = this.theme;
 
     // Title row.
