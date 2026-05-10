@@ -26,10 +26,16 @@ import {
   createDialog,
   createDivider,
   createDropdown,
+  createEmptyState,
   createListRow,
   createLoadingSpinner,
+  createNumberInput,
   createProgressBar,
+  createRetryView,
   createScrollView,
+  createSkeleton,
+  createStepper,
+  createTextInput,
   createRadioGroup,
   createSectionHeader,
   createSlider,
@@ -44,7 +50,7 @@ import {
 
 const { ccclass, property } = _decorator;
 
-type TabKey = 'inputs' | 'navigation' | 'display' | 'overlay' | 'settings' | 'poker';
+type TabKey = 'inputs' | 'navigation' | 'display' | 'overlay' | 'settings' | 'forms' | 'poker';
 
 const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
@@ -114,6 +120,7 @@ export class UiComponentsDemoScene extends Component {
         { key: 'display', label: 'Display' },
         { key: 'overlay', label: 'Overlay' },
         { key: 'settings', label: 'Settings' },
+        { key: 'forms', label: 'Forms & States' },
         { key: 'poker', label: 'Poker Feedback' },
       ],
       activeKey: this.currentTab,
@@ -158,6 +165,7 @@ export class UiComponentsDemoScene extends Component {
       case 'display': renderDisplayTab(ctx); break;
       case 'overlay': renderOverlayTab(ctx); break;
       case 'settings': renderSettingsTab(ctx); break;
+      case 'forms': renderFormsAndStatesTab(ctx); break;
       case 'poker': renderPokerTab(ctx); break;
     }
   }
@@ -721,29 +729,78 @@ function renderSettingsTab(ctx: TabContext): void {
   const acctInnerW = COL_WIDTH - theme.spacing.md * 2;
   let innerY = (acctCardHeight - theme.spacing.md * 2) / 2 - ROW_HEIGHT / 2;
 
+  let usernameValue = 'Brian';
   const userRow = createListRow({
     parent: acctInner,
     theme,
     width: acctInnerW,
     label: '用户名',
-    value: 'Brian',
+    value: usernameValue,
     chevron: true,
     onClick: () => {
-      // Real settings flow: open an "edit username" dialog with
-      // text input. v0.2.0-alpha.0 doesn't ship a TextInput
-      // primitive yet (deferred to a future phase), so the demo
-      // shows a placeholder Dialog. Once TextInput lands, the
-      // host swaps message → input field.
-      createDialog({
+      // Phase G2: real edit flow via BottomSheet + TextInput.
+      // BottomSheet's contentNode is the natural slot for form
+      // content (Dialog's `message` is text-only). The sheet's
+      // backdrop dismiss + close button + slide animation reuse
+      // the existing primitive.
+      const sheet = createBottomSheet({
         parent: uiRoot,
         theme,
         title: '修改用户名',
-        message: 'TextInput 控件待 Phase G 后落地。当前以 Dialog 占位演示 click 流转：confirm 关闭、cancel 关闭，都通过 onClose 兜底。',
-        confirmText: '保存',
-        onConfirm: () => console.log('[demo] username save (no input wired)'),
-        onCancel: () => console.log('[demo] username cancel'),
-        onClose: () => console.log('[demo] username dialog close'),
+        height: 220,
+        onClose: () => console.log('[demo] username sheet close'),
       });
+      const sheetW = sheet.contentNode.getComponent(UITransform)?.width ?? 360;
+      const inputWidth = Math.min(sheetW - 48, 360);
+
+      const input = createTextInput({
+        parent: sheet.contentNode,
+        theme,
+        width: inputWidth,
+        value: usernameValue,
+        placeholder: '输入新的用户名',
+        maxLength: 24,
+      });
+      input.node.setPosition(0, 30);
+
+      // Save / Cancel pinned at the bottom of the sheet body.
+      const saveBtn = createButtonBase({
+        theme,
+        label: '保存',
+        variant: 'primary',
+        width: 120,
+        height: 36,
+        onClick: () => {
+          const next = input.getValue().trim();
+          if (next.length > 0 && next !== usernameValue) {
+            usernameValue = next;
+            userRow.setValue(usernameValue);
+            console.log('[demo] username save', usernameValue);
+          }
+          input.dispose();
+          saveBtn.dispose();
+          cancelBtn.dispose();
+          sheet.close();
+        },
+      });
+      saveBtn.node.setPosition(70, -40);
+      sheet.contentNode.addChild(saveBtn.node);
+
+      const cancelBtn = createButtonBase({
+        theme,
+        label: '取消',
+        variant: 'ghost',
+        width: 120,
+        height: 36,
+        onClick: () => {
+          input.dispose();
+          saveBtn.dispose();
+          cancelBtn.dispose();
+          sheet.close();
+        },
+      });
+      cancelBtn.node.setPosition(-70, -40);
+      sheet.contentNode.addChild(cancelBtn.node);
     },
   });
   userRow.node.setPosition(0, innerY);
@@ -972,6 +1029,133 @@ function mountSectionHeader(
   header.node.setPosition(0, y - headerHeight / 2);
   ctx.register(header);
   return y - headerHeight;
+}
+
+// ---- Tab: Forms & States (Phase G2) ----
+
+function renderFormsAndStatesTab(ctx: TabContext): void {
+  const { theme, parent, width, height } = ctx;
+  const COL_WIDTH = Math.min(width - 40, 480);
+  const SECTION_GAP_LOCAL = 28;
+
+  const sv = makeVerticalScrollViewport(parent, ctx, width, height);
+  const scrollContent = sv.content;
+  let cursorY = -16;
+
+  // ---- Section 1: TextInput / NumberInput / Stepper ----
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '表单输入');
+  cursorY -= 8;
+
+  // TextInput sample
+  cursorY -= 16;
+  const nicknameInput = createTextInput({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    placeholder: '输入昵称',
+    value: '',
+    maxLength: 16,
+    onChange: (v) => console.log('[demo] nickname', v),
+  });
+  nicknameInput.node.setPosition(0, cursorY - 20);
+  ctx.register(nicknameInput);
+  cursorY -= 56;
+
+  // NumberInput sample (wallet flavor)
+  cursorY -= 12;
+  const amountInput = createNumberInput({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    placeholder: '充值金额',
+    value: 1000,
+    min: 0,
+    max: 1000000,
+    decimals: 2,
+    thousands: true,
+    onChange: (v) => console.log('[demo] amount', v),
+    onCommit: (v) => console.log('[demo] amount commit', v),
+  });
+  amountInput.node.setPosition(0, cursorY - 20);
+  ctx.register(amountInput);
+  cursorY -= 56;
+
+  // Stepper sample (room player count)
+  cursorY -= 12;
+  const seatsStepper = createStepper({
+    parent: scrollContent,
+    theme,
+    width: 180,
+    value: 6,
+    min: 2,
+    max: 9,
+    step: 1,
+    onChange: (v) => console.log('[demo] seats', v),
+  });
+  seatsStepper.node.setPosition(0, cursorY - 20);
+  ctx.register(seatsStepper);
+  cursorY -= 56;
+
+  // ---- Section 2: Skeleton ----
+  cursorY -= SECTION_GAP_LOCAL;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, 'Skeleton 加载占位');
+  cursorY -= 8;
+
+  for (let i = 0; i < 3; i++) {
+    cursorY -= 12;
+    const skel = createSkeleton({
+      parent: scrollContent,
+      theme,
+      width: COL_WIDTH,
+      height: 56,
+      radius: theme.radius.md,
+    });
+    skel.node.setPosition(0, cursorY - 28);
+    ctx.register(skel);
+    cursorY -= 56;
+  }
+
+  // ---- Section 3: EmptyState ----
+  cursorY -= SECTION_GAP_LOCAL;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, 'EmptyState 空状态');
+  cursorY -= 8;
+
+  const emptyHeight = 220;
+  cursorY -= 12;
+  const empty = createEmptyState({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    iconText: '👥',
+    title: '暂无好友',
+    subtitle: '去添加一个好友开始第一局',
+    action: {
+      label: '去添加',
+      variant: 'primary',
+      onClick: () => console.log('[demo] empty state action'),
+    },
+  });
+  empty.node.setPosition(0, cursorY - emptyHeight / 2);
+  ctx.register(empty);
+  cursorY -= emptyHeight;
+
+  // ---- Section 4: RetryView ----
+  cursorY -= SECTION_GAP_LOCAL;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, 'RetryView 加载失败');
+  cursorY -= 8;
+
+  cursorY -= 12;
+  const retry = createRetryView({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    onRetry: () => console.log('[demo] retry triggered'),
+  });
+  retry.node.setPosition(0, cursorY - emptyHeight / 2);
+  ctx.register(retry);
+  cursorY -= emptyHeight;
+
+  sv.setContentHeight(-cursorY + 32);
 }
 
 // ---- Tab: Poker Feedback (the showcase) ----
