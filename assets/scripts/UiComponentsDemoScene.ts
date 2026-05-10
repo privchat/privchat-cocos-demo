@@ -777,10 +777,24 @@ function renderSettingsTab(ctx: TabContext): void {
     width: acctInnerW,
     label: '语言',
     value: 'zh-CN',
+    // Long option list to demonstrate the picker's vertical scroll.
+    // 12+ entries forces the BottomSheet's clamped visible region
+    // to overflow → ScrollView in Dropdown kicks in. 日本語 is
+    // intentionally disabled to demo the option.disabled rejection
+    // path (tap doesn't switch + label dims to textDisabled).
     options: [
       { value: 'zh-CN', label: '简体中文' },
+      { value: 'zh-TW', label: '繁體中文' },
       { value: 'en-US', label: 'English' },
       { value: 'ja-JP', label: '日本語', disabled: true },
+      { value: 'ko-KR', label: '한국어' },
+      { value: 'es-ES', label: 'Español' },
+      { value: 'fr-FR', label: 'Français' },
+      { value: 'de-DE', label: 'Deutsch' },
+      { value: 'pt-BR', label: 'Português (BR)' },
+      { value: 'ru-RU', label: 'Русский' },
+      { value: 'ar-SA', label: 'العربية' },
+      { value: 'th-TH', label: 'ไทย' },
     ],
     onChange: (v) => console.log('[demo] lang →', v),
   });
