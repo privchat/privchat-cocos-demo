@@ -18,10 +18,13 @@ import {
   createAvatar,
   createBadge,
   createBottomNav,
+  createBottomSheet,
   createButtonBase,
   createCheckbox,
   createCountdownRing,
+  createDialog,
   createLoadingSpinner,
+  createProgressBar,
   createRadioGroup,
   createSlider,
   createSwitch,
@@ -35,7 +38,7 @@ import {
 
 const { ccclass, property } = _decorator;
 
-type TabKey = 'inputs' | 'navigation' | 'display' | 'poker';
+type TabKey = 'inputs' | 'navigation' | 'display' | 'overlay' | 'poker';
 
 const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
@@ -103,6 +106,7 @@ export class UiComponentsDemoScene extends Component {
         { key: 'inputs', label: 'Inputs' },
         { key: 'navigation', label: 'Navigation' },
         { key: 'display', label: 'Display' },
+        { key: 'overlay', label: 'Overlay' },
         { key: 'poker', label: 'Poker Feedback' },
       ],
       activeKey: this.currentTab,
@@ -145,6 +149,7 @@ export class UiComponentsDemoScene extends Component {
       case 'inputs': renderInputsTab(ctx); break;
       case 'navigation': renderNavigationTab(ctx); break;
       case 'display': renderDisplayTab(ctx); break;
+      case 'overlay': renderOverlayTab(ctx); break;
       case 'poker': renderPokerTab(ctx); break;
     }
   }
@@ -457,6 +462,201 @@ function renderDisplayTab(ctx: TabContext): void {
   toggleBtn.node.setPosition(40, y);
   parent.addChild(toggleBtn.node);
   ctx.register(toggleBtn);
+}
+
+// ---- Tab: Overlay (Phase E) ----
+
+function renderOverlayTab(ctx: TabContext): void {
+  const { theme, parent, width, height, uiRoot } = ctx;
+  const leftEdge = -width / 2 + 24;
+  const rowWidth = width - 48;
+
+  // Section: Dialog triggers — 3 buttons.
+  let y = height / 2 - 40;
+
+  const sectionTitle = makeLabel('Dialog', { theme, width: rowWidth, align: 'left' });
+  sectionTitle.setPosition(leftEdge + rowWidth / 2, y);
+  parent.addChild(sectionTitle);
+  ctx.registerNode(sectionTitle);
+
+  y -= 36;
+  const defaultDialogBtn = createButtonBase({
+    theme,
+    label: '默认确认',
+    variant: 'primary',
+    width: 120,
+    height: 36,
+    onClick: () => {
+      const d = createDialog({
+        parent: uiRoot,
+        theme,
+        title: '退出当前牌局?',
+        message: '退出后将无法回到本局，但桌位会保留 30 秒。',
+        confirmText: '退出',
+        onConfirm: () => console.log('[demo] dialog confirm'),
+        onCancel: () => console.log('[demo] dialog cancel'),
+        onClose: () => console.log('[demo] dialog close'),
+      });
+      void d;
+    },
+  });
+  defaultDialogBtn.node.setPosition(leftEdge + 60, y);
+  parent.addChild(defaultDialogBtn.node);
+  ctx.register(defaultDialogBtn);
+
+  const dangerDialogBtn = createButtonBase({
+    theme,
+    label: 'Danger 确认',
+    variant: 'danger',
+    width: 120,
+    height: 36,
+    onClick: () => {
+      createDialog({
+        parent: uiRoot,
+        theme,
+        title: '解散牌局?',
+        message: '当前牌局未结束，解散将导致所有玩家退出，且无法撤销。',
+        confirmText: '解散',
+        cancelText: '继续',
+        variant: 'danger',
+        onConfirm: () => console.log('[demo] danger dialog confirm'),
+      });
+    },
+  });
+  dangerDialogBtn.node.setPosition(leftEdge + 196, y);
+  parent.addChild(dangerDialogBtn.node);
+  ctx.register(dangerDialogBtn);
+
+  const alertDialogBtn = createButtonBase({
+    theme,
+    label: '单按钮',
+    variant: 'secondary',
+    width: 96,
+    height: 36,
+    onClick: () => {
+      createDialog({
+        parent: uiRoot,
+        theme,
+        title: '网络已断开',
+        message: '请检查网络连接，稍后将自动重连。',
+        confirmText: '我知道了',
+        cancelText: null,
+        onConfirm: () => console.log('[demo] alert dialog ack'),
+      });
+    },
+  });
+  alertDialogBtn.node.setPosition(leftEdge + 308, y);
+  parent.addChild(alertDialogBtn.node);
+  ctx.register(alertDialogBtn);
+
+  // Section: BottomSheet trigger.
+  y -= 56;
+  const bsTitle = makeLabel('BottomSheet', { theme, width: rowWidth, align: 'left' });
+  bsTitle.setPosition(leftEdge + rowWidth / 2, y);
+  parent.addChild(bsTitle);
+  ctx.registerNode(bsTitle);
+
+  y -= 36;
+  const bsBtn = createButtonBase({
+    theme,
+    label: '打开玩家资料',
+    variant: 'primary',
+    width: 160,
+    height: 36,
+    onClick: () => {
+      const sheet = createBottomSheet({
+        parent: uiRoot,
+        theme,
+        title: '玩家资料',
+        height: 360,
+        onClose: () => console.log('[demo] bottom-sheet close'),
+      });
+      // Host populates the body. Simplest demo: a centered placeholder
+      // label + an inline close button (proves contentNode is host-
+      // owned and dispose-clean).
+      const placeholder = makeLabel('(host content here)', {
+        theme,
+        width: 320,
+        align: 'center',
+        fontSize: theme.fontSize.md,
+      });
+      placeholder.setPosition(0, 60);
+      sheet.contentNode.addChild(placeholder);
+
+      const innerBtn = createButtonBase({
+        theme,
+        label: '关闭',
+        variant: 'secondary',
+        width: 120,
+        height: 36,
+        onClick: () => sheet.close(),
+      });
+      innerBtn.node.setPosition(0, 0);
+      sheet.contentNode.addChild(innerBtn.node);
+    },
+  });
+  bsBtn.node.setPosition(leftEdge + 80, y);
+  parent.addChild(bsBtn.node);
+  ctx.register(bsBtn);
+
+  // Section: ProgressBar samples.
+  y -= 56;
+  const pbTitle = makeLabel('ProgressBar', { theme, width: rowWidth, align: 'left' });
+  pbTitle.setPosition(leftEdge + rowWidth / 2, y);
+  parent.addChild(pbTitle);
+  ctx.registerNode(pbTitle);
+
+  y -= 28;
+  const pb0 = createProgressBar({ theme, width: 280, value: 0 });
+  pb0.node.setPosition(leftEdge + 140, y);
+  parent.addChild(pb0.node);
+  ctx.register(pb0);
+
+  y -= 24;
+  const pb50 = createProgressBar({
+    theme,
+    width: 280,
+    value: 50,
+    max: 100,
+    showLabel: true,
+  });
+  pb50.node.setPosition(leftEdge + 140, y);
+  parent.addChild(pb50.node);
+  ctx.register(pb50);
+
+  y -= 24;
+  const pb100 = createProgressBar({
+    theme,
+    width: 280,
+    value: 100,
+    max: 100,
+    showLabel: true,
+  });
+  pb100.node.setPosition(leftEdge + 140, y);
+  parent.addChild(pb100.node);
+  ctx.register(pb100);
+
+  // Animate-to button — bumps the third bar from 100 → 25 → 100.
+  y -= 36;
+  let bumped = false;
+  const animateBtn = createButtonBase({
+    theme,
+    label: '动画到 25%',
+    variant: 'secondary',
+    width: 140,
+    height: 32,
+    onClick: () => {
+      // No tween in v1; setProgress is a snap. Demo just toggles
+      // 100% ↔ 25% to prove setProgress paints. A tweened
+      // ProgressBar is a deliberate omission — hosts wrap with
+      // AnimatedNumber-style projection if they need it.
+      pb100.setProgress(bumped ? 1 : 0.25);
+      bumped = !bumped;
+    },
+  });
+  animateBtn.node.setPosition(leftEdge + 70, y);
+  parent.addChild(animateBtn.node);
+  ctx.register(animateBtn);
 }
 
 // ---- Tab: Poker Feedback (the showcase) ----
