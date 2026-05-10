@@ -10,7 +10,7 @@
 // no SDK / network / login dependencies. Switch tabs to exercise
 // each component category.
 
-import { Color, Component, Label, Node, UITransform, _decorator } from 'cc';
+import { Color, Component, Label, Layout, Node, UITransform, _decorator } from 'cc';
 import {
   DefaultUiTheme,
   attachTweenAttention,
@@ -29,6 +29,7 @@ import {
   createListRow,
   createLoadingSpinner,
   createProgressBar,
+  createScrollView,
   createRadioGroup,
   createSectionHeader,
   createSlider,
@@ -680,12 +681,22 @@ function renderSettingsTab(ctx: TabContext): void {
   const ROW_HEIGHT = 56;
   const SECTION_HEADER_GAP = 4;
   const CARD_GAP = 16;
+  const TOP_INSET = 12;
 
-  // Vertical cursor — descends as each section is laid out.
-  let cursorY = height / 2 - 20;
+  // Wrap the entire settings layout in a vertical ScrollView so a
+  // long settings page (typical real game has 5+ sections) is
+  // navigable. The scroll's `content` is a top-anchored Node we
+  // manage manually — children use top-down y coords (y=0 at top
+  // of content, y descends with negative values).
+  const scrollViewport = makeVerticalScrollViewport(parent, ctx, width, height);
+  const scrollContent = scrollViewport.content;
+  // Content cursor: y=0 is the top edge of scroll content. We'll
+  // grow the content height as we add sections; descending = more
+  // negative y.
+  let cursorY = -TOP_INSET;
 
   // ---- Section: 账户 ----
-  cursorY = mountSectionHeader(parent, ctx, cursorY, COL_WIDTH, '账户');
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '账户');
   cursorY -= SECTION_HEADER_GAP;
 
   // Card body height: 3 ListRows + 1 Divider between row 2 and 3
@@ -696,7 +707,7 @@ function renderSettingsTab(ctx: TabContext): void {
   const acctDividers = 1;
   const acctCardHeight = ROW_HEIGHT * acctRows + 1 * acctDividers + theme.spacing.md * 2;
   const acctCard = createCard({
-    parent,
+    parent: scrollContent,
     theme,
     width: COL_WIDTH,
     height: acctCardHeight,
@@ -717,7 +728,23 @@ function renderSettingsTab(ctx: TabContext): void {
     label: '用户名',
     value: 'Brian',
     chevron: true,
-    onClick: () => console.log('[demo] settings → username'),
+    onClick: () => {
+      // Real settings flow: open an "edit username" dialog with
+      // text input. v0.2.0-alpha.0 doesn't ship a TextInput
+      // primitive yet (deferred to a future phase), so the demo
+      // shows a placeholder Dialog. Once TextInput lands, the
+      // host swaps message → input field.
+      createDialog({
+        parent: uiRoot,
+        theme,
+        title: '修改用户名',
+        message: 'TextInput 控件待 Phase G 后落地。当前以 Dialog 占位演示 click 流转：confirm 关闭、cancel 关闭，都通过 onClose 兜底。',
+        confirmText: '保存',
+        onConfirm: () => console.log('[demo] username save (no input wired)'),
+        onCancel: () => console.log('[demo] username cancel'),
+        onClose: () => console.log('[demo] username dialog close'),
+      });
+    },
   });
   userRow.node.setPosition(0, innerY);
   ctx.register(userRow);
@@ -763,13 +790,13 @@ function renderSettingsTab(ctx: TabContext): void {
   cursorY -= acctCardHeight + CARD_GAP;
 
   // ---- Section: 游戏设置 ----
-  cursorY = mountSectionHeader(parent, ctx, cursorY, COL_WIDTH, '游戏设置');
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '游戏设置');
   cursorY -= SECTION_HEADER_GAP;
 
   const gameRows = 3;
   const gameCardHeight = ROW_HEIGHT * gameRows + theme.spacing.md * 2;
   const gameCard = createCard({
-    parent,
+    parent: scrollContent,
     theme,
     width: COL_WIDTH,
     height: gameCardHeight,
@@ -834,13 +861,13 @@ function renderSettingsTab(ctx: TabContext): void {
   cursorY -= gameCardHeight + CARD_GAP;
 
   // ---- Section: 德州设置 ----
-  cursorY = mountSectionHeader(parent, ctx, cursorY, COL_WIDTH, '德州设置');
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '德州设置');
   cursorY -= SECTION_HEADER_GAP;
 
   const pokerRows = 2;
   const pokerCardHeight = ROW_HEIGHT * pokerRows + theme.spacing.md * 2;
   const pokerCard = createCard({
-    parent,
+    parent: scrollContent,
     theme,
     width: COL_WIDTH,
     height: pokerCardHeight,
@@ -889,6 +916,13 @@ function renderSettingsTab(ctx: TabContext): void {
   });
   raiseDropdown.node.setPosition(0, innerY);
   ctx.register(raiseDropdown);
+
+  // Advance cursor past the last card so the total content height
+  // includes its full extent. Earlier sections did this inline;
+  // the last one needs an explicit step (no following section).
+  cursorY -= pokerCardHeight;
+  const totalContentHeight = -cursorY + 24; // 24px bottom inset
+  scrollViewport.setContentHeight(totalContentHeight);
 }
 
 /** Place a SectionHeader at `y` and return the bottom edge so the
@@ -1217,4 +1251,41 @@ function layoutButtonRow(
     ctx.register(btn);
     x += spec.width + GAP;
   }
+}
+
+interface ScrollViewport {
+  /** Top-anchored content node. Children added here use top-down
+   *  y coords (y=0 at top of content, y descends). Set
+   *  `setContentHeight()` after laying out so the ScrollView can
+   *  compute its scroll range. */
+  content: Node;
+  setContentHeight(height: number): void;
+}
+
+/** Build a vertical ScrollView whose `content` is a Node with
+ *  anchor (0.5, 1) — top-anchored — and NO cc.Layout component, so
+ *  the host can manually position children. (`createScrollView`
+ *  from @privchat/cocos attaches a vertical Layout that fights
+ *  manual positioning; we bypass it here for the Settings tab.) */
+function makeVerticalScrollViewport(
+  parent: Node,
+  ctx: TabContext,
+  width: number,
+  height: number,
+): ScrollViewport {
+  const sv = createScrollView('Settings_scroll', width, height);
+  // createScrollView attaches a vertical Layout to `content` which
+  // would override our manual positions. Disable it.
+  const layout = sv.content.getComponent(Layout);
+  if (layout) layout.enabled = false;
+  parent.addChild(sv.root);
+  ctx.registerNode(sv.root);
+
+  return {
+    content: sv.content,
+    setContentHeight(h: number): void {
+      const ui = sv.content.getComponent(UITransform);
+      if (ui) ui.setContentSize(width, h);
+    },
+  };
 }
