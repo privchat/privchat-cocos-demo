@@ -862,10 +862,22 @@ function renderSettingsTab(ctx: TabContext): void {
     width: gameInnerW,
     label: '桌面主题',
     value: 'gold',
+    // Same many-options story as the language picker — keeps the
+    // demo's two Dropdowns visually consistent (both engage the
+    // inner ScrollView). With only 3 options the sheet would fit
+    // everything without scrolling, which reads as inconsistent
+    // behavior next to the long language picker.
     options: [
       { value: 'classic', label: '经典绿' },
       { value: 'gold', label: '金色经典' },
       { value: 'midnight', label: '午夜蓝' },
+      { value: 'forest', label: '森林深绿' },
+      { value: 'ocean', label: '海洋蓝' },
+      { value: 'sunset', label: '日落橙' },
+      { value: 'royal', label: '皇家紫' },
+      { value: 'cherry', label: '樱花粉' },
+      { value: 'ice', label: '冰川蓝' },
+      { value: 'phoenix', label: '凤凰红', disabled: true },
     ],
     onChange: (v) => console.log('[demo] theme →', v),
   });
