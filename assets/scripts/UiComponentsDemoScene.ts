@@ -41,11 +41,6 @@ const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
 const TITLE_FONT_BOOST = 4;
 const SECTION_GAP = 16;
-/** Max width of the working content column. On a 1280×720 desktop
- *  canvas the demo renders centered inside a 480-wide phone-preview
- *  column rather than stretching across the whole screen (which makes
- *  every horizontal control look unnaturally far apart). */
-const CONTENT_MAX_W = 480;
 
 @ccclass('UiComponentsDemoScene')
 export class UiComponentsDemoScene extends Component {
@@ -87,18 +82,13 @@ export class UiComponentsDemoScene extends Component {
       canvasH = 1280;
       ui.setContentSize(canvasW, canvasH);
     }
-    // The demo content is mobile-first. Cap the working width at
-    // CONTENT_MAX_W and center it inside the canvas — on a wide
-    // landscape canvas (e.g., 1280×720) you get a centered "phone
-    // preview" column with empty side gutters; on a portrait
-    // canvas it just fills.
-    const contentWidth = Math.min(canvasW, CONTENT_MAX_W);
+    const width = canvasW;
     const height = canvasH;
     const theme = this.theme;
 
     const title = makeLabel('UI Components Demo', {
       theme,
-      width: contentWidth,
+      width,
       fontSize: theme.fontSize.lg + TITLE_FONT_BOOST,
       align: 'center',
     });
@@ -107,7 +97,7 @@ export class UiComponentsDemoScene extends Component {
 
     const tabsHandle = createTabs<TabKey>({
       theme,
-      width: contentWidth,
+      width,
       height: TAB_BAR_HEIGHT,
       tabs: [
         { key: 'inputs', label: 'Inputs' },
@@ -125,13 +115,10 @@ export class UiComponentsDemoScene extends Component {
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
 
-    // Body container sized to the content column (not full canvas)
-    // so per-tab factories can use width-relative layouts without
-    // the BottomNav stretching across an empty 1920px desktop.
     const body = new Node('UiDemo_body');
     const bodyUi = body.addComponent(UITransform);
     const bodyHeight = height - TITLE_HEIGHT - TAB_BAR_HEIGHT - 12;
-    bodyUi.setContentSize(contentWidth, bodyHeight);
+    bodyUi.setContentSize(width, bodyHeight);
     body.setPosition(0, -TITLE_HEIGHT / 2 - TAB_BAR_HEIGHT / 2 - 4);
     this.uiRoot.addChild(body);
     this.bodyNode = body;
