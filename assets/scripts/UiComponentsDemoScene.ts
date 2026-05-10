@@ -662,27 +662,39 @@ function renderOverlayTab(ctx: TabContext): void {
 // ---- Tab: Poker Feedback (the showcase) ----
 
 function renderPokerTab(ctx: TabContext): void {
-  const { theme, parent, width, height, uiRoot } = ctx;
+  const { theme, parent, height, uiRoot } = ctx;
+  // ctx.width is unused — every section is x-centered (x=0).
 
-  // Layout (top-down):
+  // Vertical rhythm. Top-down:
   //   [avatar+ring]
-  //   [pot animated number]
-  //   [bet slider + bet readout]
-  //   [countdown control buttons row]
-  //   [attention trigger buttons row]
+  //     ↓ 50px gap
+  //   [底池 label]
+  //     ↓ 24px gap
+  //   [pot value]
+  //     ↓ 50px gap
+  //   [bet slider + 加注 readout]   single row
+  //     ↓ 56px gap
+  //   [countdown control row]        3 buttons
+  //     ↓ 48px gap
+  //   [attention trigger row]        3 buttons
+  //     ↓ 48px gap
   //   [stop animations button]
+  const avatarY = height / 2 - 70;
+  const potLabelY = avatarY - 60;
+  const potValueY = potLabelY - 24;
+  const sliderRowY = potValueY - 50;
+  const ctrlRowY = sliderRowY - 56;
+  const attRowY = ctrlRowY - 48;
+  const stopRowY = attRowY - 48;
 
-  const avatarTopY = height / 2 - 60;
-
-  // Avatar wrapped in a CountdownRing. The ring is its own node,
-  // slightly larger; we position the avatar inside it.
+  // ---- Avatar + CountdownRing ----
   const ring = createCountdownRing({
     theme,
     size: 78,
     thickness: 4,
     progress: 1,
   });
-  ring.node.setPosition(0, avatarTopY);
+  ring.node.setPosition(0, avatarY);
   parent.addChild(ring.node);
   ctx.register(ring);
 
@@ -693,20 +705,25 @@ function renderPokerTab(ctx: TabContext): void {
     shape: 'circle',
     status: 'online',
   });
-  // Centered inside the ring.
   ring.node.addChild(avatar.node);
   ctx.register(avatar);
 
-  // Attention attaches to the avatar — pulse / shake / glow target
-  // the avatar node, which sits inside the ring.
+  // Attention attaches to the avatar (pulse / shake / glow targets
+  // are the avatar node, which sits inside the ring).
   const attention = attachTweenAttention({ target: avatar.node, theme });
-  // attention isn't a UiComponentHandle (no .node), but we still
-  // need to dispose it on tab teardown — wrap as one.
   ctx.register(attentionAsHandle(attention, avatar.node));
 
-  // Pot. Use a custom format with "$" prefix.
-  const potLabel = makeLabel('底池', { theme, width: 80, align: 'right' });
-  potLabel.setPosition(-50, avatarTopY - 70);
+  // ---- Pot: stacked label + value (centered) ----
+  // "底池" sits ABOVE the value as a small caption rather than a
+  // horizontal sibling — earlier the side-by-side layout overlapped
+  // (label width=80 at x=-50 + value width=140 at x=35 collided).
+  const potLabel = makeLabel('底池', {
+    theme,
+    width: 200,
+    align: 'center',
+    fontSize: theme.fontSize.sm,
+  });
+  potLabel.setPosition(0, potLabelY);
   parent.addChild(potLabel);
   ctx.registerNode(potLabel);
 
@@ -715,153 +732,123 @@ function renderPokerTab(ctx: TabContext): void {
     theme,
     value: currentPot,
     fontSize: theme.fontSize.xl,
-    width: 140,
-    align: 'left',
+    width: 240,
+    align: 'center',
     format: (n) => `$${formatThousandsLocal(Math.floor(n))}`,
   });
-  pot.node.setPosition(35, avatarTopY - 70);
+  pot.node.setPosition(0, potValueY);
   parent.addChild(pot.node);
   ctx.register(pot);
 
-  // Bet slider (range 0..1000, step 50). Drag updates the bet
-  // readout via AnimatedNumber.setValue (jump-mode — drag is the
-  // animation, no double-tween).
-  const sliderTopY = avatarTopY - 130;
+  // ---- Slider + 加注 readout (single row) ----
+  // Slider on the left, "加注 $XXX" on the right. Total width
+  // ≈ 220 + 12 gap + 100 readout = 332; center the row at x=0.
+  const sliderWidth = 220;
+  const readoutWidth = 100;
+  const sliderRowGap = 12;
+  const sliderRowTotal = sliderWidth + sliderRowGap + readoutWidth;
+  const sliderCenterX = -sliderRowTotal / 2 + sliderWidth / 2;
+  const readoutCenterX = sliderRowTotal / 2 - readoutWidth / 2;
+
   const slider = createSlider({
     theme,
     min: 0,
     max: 1000,
     step: 50,
     value: 100,
-    width: 220,
+    width: sliderWidth,
     onChange: (v) => bet.setValue(v),
     onCommit: (v) => console.log('[demo] bet committed', v),
   });
-  slider.node.setPosition(-30, sliderTopY);
+  slider.node.setPosition(sliderCenterX, sliderRowY);
   parent.addChild(slider.node);
   ctx.register(slider);
-
-  const betLabel = makeLabel('加注', { theme, width: 40, align: 'left' });
-  betLabel.setPosition(110, sliderTopY);
-  parent.addChild(betLabel);
-  ctx.registerNode(betLabel);
 
   const bet = createAnimatedNumber({
     theme,
     value: 100,
     fontSize: theme.fontSize.md,
-    width: 80,
-    align: 'left',
-    format: (n) => `$${formatThousandsLocal(Math.floor(n))}`,
+    width: readoutWidth,
+    align: 'center',
+    format: (n) => `加注 $${formatThousandsLocal(Math.floor(n))}`,
   });
-  bet.node.setPosition(155, sliderTopY);
+  bet.node.setPosition(readoutCenterX, sliderRowY);
   parent.addChild(bet.node);
   ctx.register(bet);
 
-  // Countdown control row.
-  const ctrlY = sliderTopY - 50;
-  const startBtn = createButtonBase({
-    theme,
-    label: '开始倒计时 30s',
-    variant: 'primary',
-    width: 140,
-    height: 32,
-    onClick: () => {
-      ring.start(30_000);
-      showToast({ theme, parent: uiRoot, text: '本地倒计时 30s 已开始', kind: 'info' });
+  // ---- Countdown control row (3 buttons, centered) ----
+  layoutButtonRow(parent, ctx, ctrlRowY, [
+    {
+      label: '开始倒计时 30s',
+      variant: 'primary',
+      width: 140,
+      onClick: () => {
+        ring.start(30_000);
+        showToast({ theme, parent: uiRoot, text: '本地倒计时 30s 已开始', kind: 'info' });
+      },
     },
-  });
-  startBtn.node.setPosition(-100, ctrlY);
-  parent.addChild(startBtn.node);
-  ctx.register(startBtn);
-
-  const pushBtn = createButtonBase({
-    theme,
-    label: '服务端 progress=0.5',
-    variant: 'secondary',
-    width: 130,
-    height: 32,
-    onClick: () => {
-      ring.setProgress(0.5);
-      showToast({ theme, parent: uiRoot, text: '权威模式：进度=0.5', kind: 'info' });
+    {
+      label: '服务端 progress=0.5',
+      variant: 'secondary',
+      width: 150,
+      onClick: () => {
+        ring.setProgress(0.5);
+        showToast({ theme, parent: uiRoot, text: '权威模式：进度=0.5', kind: 'info' });
+      },
     },
-  });
-  pushBtn.node.setPosition(40, ctrlY);
-  parent.addChild(pushBtn.node);
-  ctx.register(pushBtn);
-
-  const resetBtn = createButtonBase({
-    theme,
-    label: '重置',
-    variant: 'ghost',
-    width: 60,
-    height: 32,
-    onClick: () => ring.reset(),
-  });
-  resetBtn.node.setPosition(140, ctrlY);
-  parent.addChild(resetBtn.node);
-  ctx.register(resetBtn);
-
-  // Attention trigger row.
-  const attY = ctrlY - 44;
-  const turnBtn = createButtonBase({
-    theme,
-    label: '轮到你了',
-    variant: 'primary',
-    width: 90,
-    height: 32,
-    onClick: () => {
-      attention.trigger('pulse');
-      showToast({ theme, parent: uiRoot, text: '轮到你了', kind: 'info' });
+    {
+      label: '重置',
+      variant: 'ghost',
+      width: 70,
+      onClick: () => ring.reset(),
     },
-  });
-  turnBtn.node.setPosition(-110, attY);
-  parent.addChild(turnBtn.node);
-  ctx.register(turnBtn);
+  ], theme);
 
-  const timeoutBtn = createButtonBase({
-    theme,
-    label: '超时',
-    variant: 'danger',
-    width: 70,
-    height: 32,
-    onClick: () => {
-      attention.trigger('shake');
-      showToast({ theme, parent: uiRoot, text: '下注超时', kind: 'warning' });
+  // ---- Attention trigger row (3 buttons, centered) ----
+  layoutButtonRow(parent, ctx, attRowY, [
+    {
+      label: '轮到你了',
+      variant: 'primary',
+      width: 100,
+      onClick: () => {
+        attention.trigger('pulse');
+        showToast({ theme, parent: uiRoot, text: '轮到你了', kind: 'info' });
+      },
     },
-  });
-  timeoutBtn.node.setPosition(-25, attY);
-  parent.addChild(timeoutBtn.node);
-  ctx.register(timeoutBtn);
-
-  const winBtn = createButtonBase({
-    theme,
-    label: '你赢了 $2,000',
-    variant: 'primary',
-    width: 130,
-    height: 32,
-    onClick: () => {
-      attention.trigger('glow');
-      currentPot += 2000;
-      pot.animateTo(currentPot);
-      showToast({ theme, parent: uiRoot, text: '你赢了 $2,000', kind: 'success' });
+    {
+      label: '超时',
+      variant: 'danger',
+      width: 80,
+      onClick: () => {
+        attention.trigger('shake');
+        showToast({ theme, parent: uiRoot, text: '下注超时', kind: 'warning' });
+      },
     },
-  });
-  winBtn.node.setPosition(80, attY);
-  parent.addChild(winBtn.node);
-  ctx.register(winBtn);
+    {
+      label: '你赢了 $2,000',
+      variant: 'primary',
+      width: 140,
+      onClick: () => {
+        attention.trigger('glow');
+        currentPot += 2000;
+        pot.animateTo(currentPot);
+        showToast({ theme, parent: uiRoot, text: '你赢了 $2,000', kind: 'success' });
+      },
+    },
+  ], theme);
 
-  // Stop animations.
+  // ---- Stop animations (single button, centered) ----
   const stopBtn = createButtonBase({
     theme,
     label: '停止动画',
     variant: 'ghost',
     width: 100,
-    height: 28,
+    height: 32,
     onClick: () => attention.stop(),
   });
-  stopBtn.node.setPosition(0, attY - 36);
+  stopBtn.node.setPosition(0, stopRowY);
   parent.addChild(stopBtn.node);
+  ctx.register(stopBtn);
   ctx.register(stopBtn);
 }
 
@@ -929,4 +916,41 @@ function attentionAsHandle(att: AttentionHandle, surrogateNode: Node): UiCompone
     node: surrogateNode,
     dispose: () => att.dispose(),
   };
+}
+
+interface RowButtonSpec {
+  label: string;
+  variant: 'primary' | 'secondary' | 'ghost' | 'danger';
+  width: number;
+  onClick: () => void;
+}
+
+/** Lay out N buttons centered as a row at given y. Buttons are
+ *  spaced 12px apart; the row's total width is whatever the sum
+ *  of widths + gaps comes to. Each button is a ButtonBase. */
+function layoutButtonRow(
+  parent: Node,
+  ctx: TabContext,
+  y: number,
+  specs: ReadonlyArray<RowButtonSpec>,
+  theme: UiTheme,
+): void {
+  const GAP = 12;
+  const HEIGHT = 36;
+  const total = specs.reduce((s, b, i) => s + b.width + (i > 0 ? GAP : 0), 0);
+  let x = -total / 2;
+  for (const spec of specs) {
+    const btn = createButtonBase({
+      theme,
+      label: spec.label,
+      variant: spec.variant,
+      width: spec.width,
+      height: HEIGHT,
+      onClick: spec.onClick,
+    });
+    btn.node.setPosition(x + spec.width / 2, y);
+    parent.addChild(btn.node);
+    ctx.register(btn);
+    x += spec.width + GAP;
+  }
 }
