@@ -196,18 +196,36 @@ export class UiComponentsDemoScene extends Component {
    *  rebuild). */
   private disposeTabContent(): void {
     if (!this.bodyNode) return;
-    // Children of bodyNode are tab-scoped. Disposable component
-    // handles + raw nodes were tracked separately; filter to those
-    // owned by the body subtree.
+    // Dispose component handles FIRST so any setInterval / setTimeout
+    // / cc.tween they own gets cleared. The earlier "just remove
+    // children + destroy" path left Skeleton / Marquee / Carousel
+    // autoplay tickers running on the destroyed nodes — those then
+    // crashed on the next tick when applyRoundedBackground tried to
+    // read a null UITransform. Always dispose() first; only THEN
+    // tear down the node tree (most handles already destroy their
+    // own node in dispose, so the children loop is a defensive
+    // cleanup for anything not handled).
+    //
+    // Filter to handles whose node is currently inside our body
+    // subtree (page-scoped Toast / Dialog handles attached to
+    // uiRoot directly remain alive across tab switches; we leave
+    // them to the host's own onDestroy).
+    const subtreeHandles = this.bodyHandles.filter((h) =>
+      isDescendantOf(h.node, this.bodyNode!),
+    );
+    for (const h of subtreeHandles) {
+      try { h.dispose(); } catch { /* ignore */ }
+    }
+    // Drop subtree handles from the tracked list (they're disposed).
+    this.bodyHandles = this.bodyHandles.filter((h) => !subtreeHandles.includes(h));
+
+    // Any remaining children inside bodyNode (un-handle-tracked raw
+    // nodes, or things whose dispose left orphan descendants) — clean.
     for (const child of [...this.bodyNode.children]) {
       child.removeFromParent();
       child.destroy();
     }
-    // Drop tracked handles whose nodes are no longer in the tree.
-    // (Children are gone, so .node references dangle. Calling
-    // dispose() on them would re-destroy already-destroyed nodes —
-    // safe per UiComponentHandle contract, but skip the call.)
-    this.bodyHandles = this.bodyHandles.filter((h) => h.node?.parent != null);
+    // Same for owned-node tracking.
     this.bodyOwnedNodes = this.bodyOwnedNodes.filter((n) => n.parent != null);
   }
 
@@ -223,6 +241,18 @@ export class UiComponentsDemoScene extends Component {
     this.bodyOwnedNodes = [];
     this.bodyNode = null;
   }
+}
+
+/** Walk up `n`'s parent chain and return true if `ancestor` is on
+ *  the path. Used to decide if a tracked handle belongs to the
+ *  current tab's body subtree. */
+function isDescendantOf(n: Node | null | undefined, ancestor: Node): boolean {
+  let cur: Node | null = n ?? null;
+  while (cur) {
+    if (cur === ancestor) return true;
+    cur = cur.parent;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------
@@ -1358,6 +1388,7 @@ function renderGuideTab(ctx: TabContext): void {
     },
   });
   actionBtn.node.setPosition(0, cursorY - 20);
+  scrollContent.addChild(actionBtn.node);
   ctx.register(actionBtn);
   cursorY -= 40;
 
@@ -1390,6 +1421,7 @@ function renderGuideTab(ctx: TabContext): void {
     },
   });
   tooltipBtn.node.setPosition(0, cursorY - 20);
+  scrollContent.addChild(tooltipBtn.node);
   ctx.register(tooltipBtn);
   cursorY -= 40;
 
@@ -1410,6 +1442,7 @@ function renderGuideTab(ctx: TabContext): void {
       onClick: () => console.log('[demo] target', k),
     });
     btn.node.setPosition(0, cursorY - 20);
+    scrollContent.addChild(btn.node);
     ctx.register(btn);
     targets.push(btn.node);
     cursorY -= 48;
@@ -1441,6 +1474,7 @@ function renderGuideTab(ctx: TabContext): void {
     },
   });
   coachBtn.node.setPosition(0, cursorY - 20);
+  scrollContent.addChild(coachBtn.node);
   ctx.register(coachBtn);
   cursorY -= 40;
 
