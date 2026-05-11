@@ -61,6 +61,7 @@ const { ccclass, property } = _decorator;
 
 type TabKey =
   | 'inputs'
+  | 'button'
   | 'navigation'
   | 'display'
   | 'overlay'
@@ -153,6 +154,7 @@ export class UiComponentsDemoScene extends Component {
       height: TAB_BAR_HEIGHT,
       tabs: [
         { key: 'inputs', label: 'Inputs' },
+        { key: 'button', label: 'Button' },
         { key: 'navigation', label: 'Navigation' },
         { key: 'display', label: 'Display' },
         { key: 'overlay', label: 'Overlay' },
@@ -207,6 +209,7 @@ export class UiComponentsDemoScene extends Component {
 
     switch (key) {
       case 'inputs': renderInputsTab(ctx); break;
+      case 'button': renderButtonTab(ctx); break;
       case 'navigation': renderNavigationTab(ctx); break;
       case 'display': renderDisplayTab(ctx); break;
       case 'overlay': renderOverlayTab(ctx); break;
@@ -407,6 +410,149 @@ function renderInputsTab(ctx: TabContext): void {
   ctx.register(slider);
 }
 
+// ---- Tab: Button ----
+//
+// Dedicated showcase for the Button primitive — the 4 variants
+// (primary / secondary / ghost / danger) crossed with normal +
+// disabled state, plus 3 height presets (28 / 36 / 44) to surface
+// the kit's recommended sizes. Click-counter row at the bottom
+// verifies onClick fires + disabled blocks clicks.
+
+function renderButtonTab(ctx: TabContext): void {
+  const { theme, parent, width, height } = ctx;
+  const leftEdge = -width / 2 + 24;
+  const rowWidth = width - 48;
+  let y = height / 2 - 32;
+
+  type V = 'primary' | 'secondary' | 'ghost' | 'danger';
+  const variants: Array<{ v: V; label: string }> = [
+    { v: 'primary',   label: 'Primary' },
+    { v: 'secondary', label: 'Secondary' },
+    { v: 'ghost',     label: 'Ghost' },
+    { v: 'danger',    label: 'Danger' },
+  ];
+
+  // Row 1: Variants — normal state, default height (36).
+  const row1Title = makeLabel('Variants', { theme, width: rowWidth, align: 'left' });
+  row1Title.setPosition(leftEdge + rowWidth / 2, y);
+  parent.addChild(row1Title);
+  ctx.registerNode(row1Title);
+
+  y -= 30;
+  const step = 132;
+  variants.forEach(({ v, label }, i) => {
+    const btn = createButtonBase({
+      theme,
+      label,
+      variant: v,
+      width: 120,
+      height: 36,
+      onClick: () => console.log('[demo] button', v),
+    });
+    btn.node.setPosition(leftEdge + 60 + i * step, y);
+    parent.addChild(btn.node);
+    ctx.register(btn);
+  });
+
+  // Row 2: Variants — disabled state.
+  y -= 50;
+  const row2Title = makeLabel('Disabled', { theme, width: rowWidth, align: 'left' });
+  row2Title.setPosition(leftEdge + rowWidth / 2, y);
+  parent.addChild(row2Title);
+  ctx.registerNode(row2Title);
+
+  y -= 30;
+  variants.forEach(({ v, label }, i) => {
+    const btn = createButtonBase({
+      theme,
+      label,
+      variant: v,
+      width: 120,
+      height: 36,
+      disabled: true,
+      onClick: () => console.log('[demo] disabled button leaked', v),
+    });
+    btn.node.setPosition(leftEdge + 60 + i * step, y);
+    parent.addChild(btn.node);
+    ctx.register(btn);
+  });
+
+  // Row 3: Sizes — same variant, three recommended heights.
+  y -= 50;
+  const row3Title = makeLabel('Sizes', { theme, width: rowWidth, align: 'left' });
+  row3Title.setPosition(leftEdge + rowWidth / 2, y);
+  parent.addChild(row3Title);
+  ctx.registerNode(row3Title);
+
+  y -= 36;
+  const sizes: Array<{ h: number; label: string; w: number }> = [
+    { h: 28, label: 'Small',   w: 96 },
+    { h: 36, label: 'Medium',  w: 120 },
+    { h: 44, label: 'Large',   w: 144 },
+  ];
+  let cursorX = leftEdge + 60;
+  sizes.forEach(({ h, label, w }) => {
+    const btn = createButtonBase({
+      theme,
+      label,
+      variant: 'primary',
+      width: w,
+      height: h,
+      onClick: () => console.log('[demo] size', label),
+    });
+    btn.node.setPosition(cursorX + w / 2 - 60, y);
+    parent.addChild(btn.node);
+    ctx.register(btn);
+    cursorX += w + 24;
+  });
+
+  // Row 4: Click counter — proves onClick fires + setDisabled blocks.
+  y -= 60;
+  let clickCount = 0;
+  const counterLabel = makeLabel('Clicks: 0', { theme, width: 200, align: 'left' });
+  counterLabel.setPosition(leftEdge + 100, y);
+  parent.addChild(counterLabel);
+  ctx.registerNode(counterLabel);
+
+  const clickBtn = createButtonBase({
+    theme,
+    label: 'Click me',
+    variant: 'primary',
+    width: 120,
+    height: 36,
+    onClick: () => {
+      clickCount += 1;
+      const lc = counterLabel.getComponent(Label);
+      if (lc) lc.string = `Clicks: ${clickCount}`;
+    },
+  });
+  clickBtn.node.setPosition(leftEdge + 260, y);
+  parent.addChild(clickBtn.node);
+  ctx.register(clickBtn);
+
+  const toggleDisableBtn = createButtonBase({
+    theme,
+    label: 'Toggle Disable',
+    variant: 'secondary',
+    width: 140,
+    height: 36,
+    onClick: () => {
+      // Flip the click button's disabled state — illustrates the
+      // setDisabled() imperative API + that click events drop while
+      // disabled (counter stops incrementing).
+      const newDisabled = (clickBtn as unknown as {
+        // ButtonBaseHandle doesn't expose `isDisabled`; track locally.
+        _demoDisabled?: boolean;
+      })._demoDisabled !== true;
+      (clickBtn as unknown as { _demoDisabled?: boolean })._demoDisabled = newDisabled;
+      clickBtn.setDisabled(newDisabled);
+    },
+  });
+  toggleDisableBtn.node.setPosition(leftEdge + 400, y);
+  parent.addChild(toggleDisableBtn.node);
+  ctx.register(toggleDisableBtn);
+}
+
 // ---- Tab: Navigation ----
 
 function renderNavigationTab(ctx: TabContext): void {
@@ -522,8 +668,8 @@ function renderDisplayTab(ctx: TabContext): void {
       theme,
       label: t.label,
       variant: i === 0 ? 'secondary' : i === 1 ? 'primary' : i === 2 ? 'secondary' : 'danger',
-      width: 64,
-      height: 32,
+      width: 80,
+      height: 36,
       onClick: () => {
         showToast({
           theme,
@@ -533,7 +679,7 @@ function renderDisplayTab(ctx: TabContext): void {
         });
       },
     });
-    btn.node.setPosition(-width / 2 + 60 + i * 76, y);
+    btn.node.setPosition(-width / 2 + 60 + i * 92, y);
     parent.addChild(btn.node);
     ctx.register(btn);
   });
@@ -550,7 +696,7 @@ function renderDisplayTab(ctx: TabContext): void {
     label: 'Toggle Spinner',
     variant: 'secondary',
     width: 140,
-    height: 32,
+    height: 36,
     onClick: () => spinner.setVisible(!spinner.isVisible()),
   });
   toggleBtn.node.setPosition(40, y);
