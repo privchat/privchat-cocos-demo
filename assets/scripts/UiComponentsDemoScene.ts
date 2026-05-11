@@ -26,6 +26,7 @@ import {
   createCheckbox,
   createCoachMark,
   createCountdownRing,
+  createDanmakuLayer,
   createDialog,
   createDivider,
   createDropdown,
@@ -1289,7 +1290,58 @@ function renderLiveOpsTab(ctx: TabContext): void {
     },
   });
   floatBtn.node.setPosition(0, cursorY - 20);
+  scrollContent.addChild(floatBtn.node);
   ctx.register(floatBtn);
+  cursorY -= 40;
+
+  // Danmaku (Phase G5)
+  cursorY -= SECTION_GAP;
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '弹幕 (Danmaku)');
+  cursorY -= 8;
+  cursorY -= 12;
+  const danmakuH = 160;
+  const danmaku = createDanmakuLayer({
+    parent: scrollContent,
+    theme,
+    width: COL_WIDTH,
+    height: danmakuH,
+    lanes: 4,
+    speed: 120,
+  });
+  danmaku.node.setPosition(0, cursorY - danmakuH / 2);
+  ctx.register(danmaku);
+  cursorY -= danmakuH;
+
+  // Trigger button: pushes a random message into the danmaku layer.
+  // Each tap fires N pushes back-to-back so lanes / queue fill up
+  // realistically — single-push doesn't demo the scheduling.
+  const danmakuSamples = [
+    { text: '🎉 GG！绝杀！', color: theme.colors.success },
+    { text: '让我看看', color: theme.colors.textPrimary },
+    { text: '666666', color: theme.colors.warning },
+    { text: '这把要 all in 了', color: theme.colors.danger },
+    { text: '主播秀！', color: theme.colors.primary },
+    { text: '稳啊', color: theme.colors.textPrimary },
+    { text: '太刺激了', color: theme.colors.warning },
+    { text: '🐲🐲🐲', color: theme.colors.success },
+  ];
+  cursorY -= 12;
+  const danmakuBtn = createButtonBase({
+    theme,
+    label: '发送 5 条随机弹幕',
+    variant: 'primary',
+    width: 200,
+    height: 40,
+    onClick: () => {
+      for (let k = 0; k < 5; k++) {
+        const sample = danmakuSamples[Math.floor(Math.random() * danmakuSamples.length)];
+        if (sample) danmaku.push(sample);
+      }
+    },
+  });
+  danmakuBtn.node.setPosition(0, cursorY - 20);
+  scrollContent.addChild(danmakuBtn.node);
+  ctx.register(danmakuBtn);
   cursorY -= 40;
 
   // Carousel: 4 placeholder activity slides. Each slide is a Node
