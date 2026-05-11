@@ -10,7 +10,7 @@
 // no SDK / network / login dependencies. Switch tabs to exercise
 // each component category.
 
-import { Color, Component, Label, Layout, Node, UITransform, _decorator, screen, view } from 'cc';
+import { Color, Component, Label, Layout, Mask, Node, ScrollView, UITransform, _decorator, screen, view } from 'cc';
 import {
   DefaultUiTheme,
   attachTweenAttention,
@@ -75,6 +75,15 @@ const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
 const TITLE_FONT_BOOST = 4;
 const SECTION_GAP = 16;
+// Fixed content height for the body's vertical scroll area. Sized to
+// fit the tallest tab content (Settings / Forms) at the 720×1280
+// portrait baseline. When the viewport is taller than this (portrait
+// devices with tall screens) the ScrollView simply doesn't scroll;
+// when shorter (landscape preview ~405h) it scrolls to reveal the
+// bottom of the tab. Tab renderers DON'T need to know about this —
+// they keep computing y as `ctx.height / 2 - offset`, just relative
+// to a 1100-tall content node instead of the live viewport.
+const BODY_CONTENT_HEIGHT = 1100;
 
 @ccclass('UiComponentsDemoScene')
 export class UiComponentsDemoScene extends Component {
@@ -82,7 +91,16 @@ export class UiComponentsDemoScene extends Component {
   uiRoot: Node | null = null;
 
   private theme: UiTheme = DefaultUiTheme;
+  /** The fixed-size viewport (has Mask + ScrollView). Children are
+   *  cleared on tab switch / orientation rebuild via disposeBody(). */
   private bodyNode: Node | null = null;
+  /** The scrollable content node inside bodyNode. Tab renderers
+   *  mount their children here, so when content exceeds the
+   *  viewport (e.g. landscape ~405h), they scroll into view. */
+  private bodyContentNode: Node | null = null;
+  /** ScrollView component on bodyNode; held so renderTab can
+   *  reset scroll-to-top on tab switch. */
+  private bodyScroll: ScrollView | null = null;
   private bodyHandles: UiComponentHandle[] = [];
   private bodyOwnedNodes: Node[] = [];
   private currentTab: TabKey = 'inputs';
@@ -201,27 +219,59 @@ export class UiComponentsDemoScene extends Component {
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
 
+    // Body: a fixed-size viewport (Mask + vertical ScrollView)
+    // holding a taller scrollable content node. Title / top Tabs
+    // stay above this; BottomNav inside a tab attaches to bodyContent
+    // (still inside the viewport when it fits). Under fixed-dp,
+    // landscape squashes the viewport but the content stays at its
+    // designed 1100h — ScrollView lets the user reach everything.
     const body = new Node('UiDemo_body');
     const bodyUi = body.addComponent(UITransform);
     const bodyHeight = height - TITLE_HEIGHT - TAB_BAR_HEIGHT - 12;
     bodyUi.setContentSize(width, bodyHeight);
     body.setPosition(0, -TITLE_HEIGHT / 2 - TAB_BAR_HEIGHT / 2 - 4);
+    const bodyMask = body.addComponent(Mask);
+    bodyMask.type = Mask.Type.GRAPHICS_RECT;
+    const bodyScroll = body.addComponent(ScrollView);
+    bodyScroll.vertical = true;
+    bodyScroll.horizontal = false;
+    bodyScroll.inertia = true;
+    bodyScroll.brake = 0.7;
+    bodyScroll.elastic = true;
+    bodyScroll.bounceDuration = 0.2;
     this.uiRoot.addChild(body);
     this.bodyNode = body;
+    this.bodyScroll = bodyScroll;
     this.bodyOwnedNodes.push(body);
+
+    // bodyContent: anchor (0.5, 0.5) keeps tab renderer's existing
+    // `y = ctx.height/2 - offset` math working unchanged. Initial
+    // position aligns content's top with viewport's top.
+    const bodyContent = new Node('UiDemo_body_content');
+    const bodyContentUi = bodyContent.addComponent(UITransform);
+    bodyContentUi.setContentSize(width, BODY_CONTENT_HEIGHT);
+    bodyContentUi.setAnchorPoint(0.5, 0.5);
+    bodyContent.setPosition(0, bodyHeight / 2 - BODY_CONTENT_HEIGHT / 2, 0);
+    body.addChild(bodyContent);
+    bodyScroll.content = bodyContent;
+    this.bodyContentNode = bodyContent;
 
     this.renderTab(this.currentTab);
   }
 
   private renderTab(key: TabKey): void {
-    if (!this.bodyNode) return;
+    if (!this.bodyNode || !this.bodyContentNode) return;
     this.disposeTabContent();
 
+    // Tab content mounts to bodyContentNode (the scrollable inner
+    // node), NOT bodyNode (the fixed viewport). ctx.height is the
+    // content's fixed designed height, NOT the viewport height —
+    // so y math stays consistent across orientations / devices.
     const ctx: TabContext = {
       theme: this.theme,
-      parent: this.bodyNode,
-      width: this.bodyNode.getComponent(UITransform)?.width ?? 360,
-      height: this.bodyNode.getComponent(UITransform)?.height ?? 600,
+      parent: this.bodyContentNode,
+      width: this.bodyContentNode.getComponent(UITransform)?.width ?? 360,
+      height: this.bodyContentNode.getComponent(UITransform)?.height ?? BODY_CONTENT_HEIGHT,
       register: (h) => this.bodyHandles.push(h),
       registerNode: (n) => this.bodyOwnedNodes.push(n),
       uiRoot: this.uiRoot!,
@@ -239,13 +289,18 @@ export class UiComponentsDemoScene extends Component {
       case 'guide': renderGuideTab(ctx); break;
       case 'poker': renderPokerTab(ctx); break;
     }
+
+    // After populating the tab, reset the scroll to the top so the
+    // user sees the start of the new tab rather than wherever the
+    // previous tab left the scroll position.
+    if (this.bodyScroll) this.bodyScroll.scrollToTop(0);
   }
 
   /** Tear down current tab content but leave the title + tabs +
    *  body container alive (they belong to `build`, not the per-tab
    *  rebuild). */
   private disposeTabContent(): void {
-    if (!this.bodyNode) return;
+    if (!this.bodyNode || !this.bodyContentNode) return;
     // Dispose component handles FIRST so any setInterval / setTimeout
     // / cc.tween they own gets cleared. The earlier "just remove
     // children + destroy" path left Skeleton / Marquee / Carousel
@@ -269,9 +324,12 @@ export class UiComponentsDemoScene extends Component {
     // Drop subtree handles from the tracked list (they're disposed).
     this.bodyHandles = this.bodyHandles.filter((h) => !subtreeHandles.includes(h));
 
-    // Any remaining children inside bodyNode (un-handle-tracked raw
-    // nodes, or things whose dispose left orphan descendants) — clean.
-    for (const child of [...this.bodyNode.children]) {
+    // Defensive cleanup: remove anything left INSIDE bodyContentNode
+    // (un-handle-tracked raw nodes or orphan descendants from a
+    // partial dispose). Critically iterate bodyContentNode.children,
+    // not bodyNode.children — bodyContentNode IS a child of bodyNode
+    // and must survive across tab switches.
+    for (const child of [...this.bodyContentNode.children]) {
       child.removeFromParent();
       child.destroy();
     }
@@ -289,7 +347,11 @@ export class UiComponentsDemoScene extends Component {
       try { n.destroy(); } catch { /* ignore */ }
     }
     this.bodyOwnedNodes = [];
+    // bodyContentNode is bodyNode's child — bodyNode.destroy() above
+    // tears it down too. Drop the refs so build() recreates them.
     this.bodyNode = null;
+    this.bodyContentNode = null;
+    this.bodyScroll = null;
   }
 }
 
