@@ -10,7 +10,7 @@
 // no SDK / network / login dependencies. Switch tabs to exercise
 // each component category.
 
-import { Color, Component, Label, Layout, Node, UITransform, _decorator, view } from 'cc';
+import { Color, Component, Label, Layout, Node, UITransform, _decorator, screen, view } from 'cc';
 import {
   DefaultUiTheme,
   attachTweenAttention,
@@ -93,11 +93,28 @@ export class UiComponentsDemoScene extends Component {
       return;
     }
     this.build();
+    // React to Cocos preview's Rotate button + actual device rotation
+    // by disposing the current body and rebuilding against the new
+    // viewport dimensions. Without this, controls stay positioned by
+    // the initial-orientation height (e.g. 1280) and overflow when
+    // landscape squashes the viewport to ~405px.
+    screen.on('window-resize', this.handleResize, this);
+    screen.on('orientation-change', this.handleResize, this);
   }
 
   protected override onDestroy(): void {
+    screen.off('window-resize', this.handleResize, this);
+    screen.off('orientation-change', this.handleResize, this);
     this.disposeBody();
   }
+
+  private handleResize = (..._args: unknown[]): void => {
+    if (!this.uiRoot) return;
+    // Preserve currentTab across rebuild so the user lands on the
+    // same tab they were viewing.
+    this.disposeBody();
+    this.build();
+  };
 
   private build(): void {
     if (!this.uiRoot) return;
@@ -147,6 +164,9 @@ export class UiComponentsDemoScene extends Component {
     });
     title.setPosition(0, height / 2 - TITLE_HEIGHT / 2 - 8);
     this.uiRoot.addChild(title);
+    // Track so disposeBody() can clean it up on orientation rebuild;
+    // otherwise a second title appears after Rotate.
+    this.bodyOwnedNodes.push(title);
 
     const tabsHandle = createTabs<TabKey>({
       theme,
