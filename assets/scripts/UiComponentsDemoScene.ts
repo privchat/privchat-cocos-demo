@@ -946,13 +946,19 @@ function renderOverlayTab(ctx: TabContext): void {
   parent.addChild(pbTitle);
   ctx.registerNode(pbTitle);
 
-  y -= 28;
+  // Per-row gap is sized so two ProgressBar containers (height + label
+  // area when showLabel=true) don't visually crowd each other. Bar
+  // itself is 8px; with the new above-the-bar label the container is
+  // ~25px, so 40px gap leaves a clean 15px breathing room between rows.
+  const BAR_GAP = 40;
+
+  y -= 32;
   const pb0 = createProgressBar({ theme, width: 280, value: 0 });
   pb0.node.setPosition(leftEdge + 140, y);
   parent.addChild(pb0.node);
   ctx.register(pb0);
 
-  y -= 24;
+  y -= BAR_GAP;
   const pb50 = createProgressBar({
     theme,
     width: 280,
@@ -964,7 +970,7 @@ function renderOverlayTab(ctx: TabContext): void {
   parent.addChild(pb50.node);
   ctx.register(pb50);
 
-  y -= 24;
+  y -= BAR_GAP;
   const pb100 = createProgressBar({
     theme,
     width: 280,
@@ -977,14 +983,14 @@ function renderOverlayTab(ctx: TabContext): void {
   ctx.register(pb100);
 
   // Animate-to button — bumps the third bar from 100 → 25 → 100.
-  y -= 36;
+  y -= 40;
   let bumped = false;
   const animateBtn = createButtonBase({
     theme,
     label: '动画到 25%',
     variant: 'secondary',
     width: 140,
-    height: 32,
+    height: 36,
     onClick: () => {
       // No tween in v1; setProgress is a snap. Demo just toggles
       // 100% ↔ 25% to prove setProgress paints. A tweened
