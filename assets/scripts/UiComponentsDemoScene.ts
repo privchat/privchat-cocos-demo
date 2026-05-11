@@ -138,12 +138,19 @@ export class UiComponentsDemoScene extends Component {
         { key: 'display', label: 'Display' },
         { key: 'overlay', label: 'Overlay' },
         { key: 'settings', label: 'Settings' },
-        { key: 'forms', label: 'Forms & States' },
+        { key: 'forms', label: 'Forms' },
         { key: 'liveops', label: 'Live Ops' },
         { key: 'guide', label: 'Guide' },
-        { key: 'poker', label: 'Poker Feedback' },
+        { key: 'poker', label: 'Poker' },
       ],
       activeKey: this.currentTab,
+      // scrollable: true honors the kit's fixed-dp scale rule
+      // (plan §6.11). 9 tabs at natural width overflow a portrait
+      // canvas — instead of compressing each tab to ≈80px (which
+      // shrinks "Forms & States" labels), the strip becomes a
+      // horizontal scroller; each tab keeps its landscape-size
+      // font / height / padding.
+      scrollable: true,
       onChange: (key: TabKey) => {
         this.currentTab = key;
         this.renderTab(key);
