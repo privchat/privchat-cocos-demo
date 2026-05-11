@@ -75,6 +75,7 @@ const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
 const TITLE_FONT_BOOST = 4;
 const SECTION_GAP = 16;
+const BOTTOM_NAV_HEIGHT = 56; // matches BottomNav's DEFAULT_HEIGHT
 // Fixed content height for the body's vertical scroll area. Sized to
 // fit the tallest tab content (Settings / Forms) at the 720×1280
 // portrait baseline. When the viewport is taller than this (portrait
@@ -221,15 +222,18 @@ export class UiComponentsDemoScene extends Component {
 
     // Body: a fixed-size viewport (Mask + vertical ScrollView)
     // holding a taller scrollable content node. Title / top Tabs
-    // stay above this; BottomNav inside a tab attaches to bodyContent
-    // (still inside the viewport when it fits). Under fixed-dp,
-    // landscape squashes the viewport but the content stays at its
-    // designed 1100h — ScrollView lets the user reach everything.
+    // stay above the body, scene-level BottomNav stays BELOW it —
+    // body claims the middle region only, and gives up height for
+    // both fixed elements so neither overlaps body content.
     const body = new Node('UiDemo_body');
     const bodyUi = body.addComponent(UITransform);
-    const bodyHeight = height - TITLE_HEIGHT - TAB_BAR_HEIGHT - 12;
+    const bodyHeight = height - TITLE_HEIGHT - TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT - 12;
     bodyUi.setContentSize(width, bodyHeight);
-    body.setPosition(0, -TITLE_HEIGHT / 2 - TAB_BAR_HEIGHT / 2 - 4);
+    // Body center is offset DOWN from canvas center by half the
+    // top-fixed stack (title + tabs) MINUS half the bottom-fixed
+    // stack (bottomNav). Net = (TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2.
+    const bodyCenterY = -(TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2 - 4;
+    body.setPosition(0, bodyCenterY);
     const bodyMask = body.addComponent(Mask);
     bodyMask.type = Mask.Type.GRAPHICS_RECT;
     const bodyScroll = body.addComponent(ScrollView);
@@ -255,6 +259,29 @@ export class UiComponentsDemoScene extends Component {
     body.addChild(bodyContent);
     bodyScroll.content = bodyContent;
     this.bodyContentNode = bodyContent;
+
+    // Scene-level BottomNav: pinned at canvas bottom across ALL
+    // tabs, never inside the body ScrollView. Mirrors how real apps
+    // place a global bottom navigation bar — solves the "have to
+    // scroll to see BottomNav" report from C-phase visual gate.
+    const bottomNav = createBottomNav<string>({
+      theme,
+      width,
+      items: [
+        { key: 'home', label: '首页', iconText: '🏠' },
+        { key: 'rooms', label: '房间', iconText: '🎮', badge: 3 },
+        { key: 'chat', label: '消息', iconText: '💬', badge: 142 },
+        { key: 'me', label: '我的', iconText: '👤' },
+      ],
+      activeKey: 'home',
+      onChange: (k) => console.log('[demo] bottom-nav', k),
+    });
+    bottomNav.node.setPosition(0, -height / 2 + BOTTOM_NAV_HEIGHT / 2);
+    this.uiRoot.addChild(bottomNav.node);
+    // Push the handle so disposeBody() tears it down on orientation
+    // rebuild (and onDestroy). Tab switches don't touch it because
+    // its node is outside bodyNode.
+    this.bodyHandles.push(bottomNav);
 
     this.renderTab(this.currentTab);
   }
@@ -674,21 +701,12 @@ function renderNavigationTab(ctx: TabContext): void {
   parent.addChild(innerTabs2.node);
   ctx.register(innerTabs2);
 
-  const bottomNav = createBottomNav<string>({
-    theme,
-    width,
-    items: [
-      { key: 'home', label: '首页', iconText: '🏠' },
-      { key: 'rooms', label: '房间', iconText: '🎮', badge: 3 },
-      { key: 'chat', label: '消息', iconText: '💬', badge: 142 },
-      { key: 'me', label: '我的', iconText: '👤' },
-    ],
-    activeKey: 'home',
-    onChange: (k) => console.log('[demo] bottom-nav', k),
-  });
-  bottomNav.node.setPosition(0, -height / 2 + 28);
-  parent.addChild(bottomNav.node);
-  ctx.register(bottomNav);
+  // NOTE: BottomNav is no longer rendered inside this tab. It's
+  // promoted to scene-level in build() and stays pinned at the
+  // canvas bottom across all tabs — mirrors how real apps use
+  // BottomNav as a global navigation surface. The fixed mount also
+  // means it's NEVER part of the body's scrollable area; rotating
+  // to landscape no longer hides it behind a 695px scroll.
 }
 
 // ---- Tab: Display ----
