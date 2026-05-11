@@ -10,7 +10,7 @@
 // no SDK / network / login dependencies. Switch tabs to exercise
 // each component category.
 
-import { Color, Component, Label, Layout, Node, UITransform, _decorator } from 'cc';
+import { Color, Component, Label, Layout, Node, UITransform, _decorator, view } from 'cc';
 import {
   DefaultUiTheme,
   attachTweenAttention,
@@ -101,20 +101,39 @@ export class UiComponentsDemoScene extends Component {
   private build(): void {
     if (!this.uiRoot) return;
     const ui = this.uiRoot.getComponent(UITransform) ?? this.uiRoot.addComponent(UITransform);
+
+    // Layout must use the ACTUAL visible viewport, not Canvas
+    // UITransform — under Show All policy with a 1280×720 design,
+    // a portrait device reports canvas=1280×720 + applies a global
+    // ~0.5625× scale to letterbox, which makes every control look
+    // shrunken (BottomNav icons, top tabs, labels). Reading
+    // cc.view.getVisibleSize() instead gives us orientation-aware
+    // dimensions in design space, so layout fills the screen and
+    // the engine no longer needs to downscale. See plan §6.11
+    // (fixed-dp scale rule).
+    const visible = view.getVisibleSize();
+    let canvasW = Math.round(visible.width);
+    let canvasH = Math.round(visible.height);
     const MIN_DIM = 240;
-    let canvasW = ui.width;
-    let canvasH = ui.height;
     if (canvasW < MIN_DIM || canvasH < MIN_DIM) {
-      console.warn(
-        `[UiComponentsDemoScene] uiRoot UITransform is ${canvasW}×${canvasH} ` +
-        `(too small). Falling back to 720×1280. To fix: bind uiRoot to your ` +
-        `Canvas node, or set the bound Node's Content Size to your design ` +
-        `resolution.`,
-      );
-      canvasW = 720;
-      canvasH = 1280;
-      ui.setContentSize(canvasW, canvasH);
+      // Editor preview before view is initialized — fall back to
+      // UITransform, then to a portrait default.
+      canvasW = ui.width >= MIN_DIM ? ui.width : 720;
+      canvasH = ui.height >= MIN_DIM ? ui.height : 1280;
     }
+    ui.setContentSize(canvasW, canvasH);
+
+    // Diagnostic: confirm uiRoot.scale === (1,1,1) and surface what
+    // the viewport actually reports. If rootScale != 1, something
+    // upstream (Widget / parent transform / project scale) is
+    // shrinking the UI — the kit's fixed-dp tokens assume scale=1.
+    const rootScale = this.uiRoot.scale;
+    console.log('[UiComponentsDemoScene] viewport=' +
+      `${canvasW}×${canvasH} ` +
+      `visible=${Math.round(visible.width)}×${Math.round(visible.height)} ` +
+      `canvasUI=${ui.width}×${ui.height} ` +
+      `rootScale=(${rootScale.x},${rootScale.y},${rootScale.z})`);
+
     const width = canvasW;
     const height = canvasH;
     const theme = this.theme;
