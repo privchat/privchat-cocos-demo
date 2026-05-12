@@ -20,6 +20,7 @@ import {
   createBanner,
   createBottomNav,
   createBottomSheet,
+  createSidebar,
   createButtonBase,
   createCard,
   createCarousel,
@@ -53,6 +54,7 @@ import {
   showToast,
   type AttentionHandle,
   type AvatarStatus,
+  type SidebarItem,
   type UiTheme,
   type UiComponentHandle,
 } from '@privchat/cocos';
@@ -71,11 +73,17 @@ type TabKey =
   | 'guide'
   | 'poker';
 
+/** Single source of truth for the "app navigation" domain — the
+ *  state rendered as Sidebar in landscape and BottomNav in portrait.
+ *  Independent from `TabKey` (the demo top tabs). */
+type AppNavKey = 'home' | 'rooms' | 'chat' | 'me';
+
 const TAB_BAR_HEIGHT = 44;
 const TITLE_HEIGHT = 36;
 const TITLE_FONT_BOOST = 4;
 const SECTION_GAP = 16;
 const BOTTOM_NAV_HEIGHT = 56; // matches BottomNav's DEFAULT_HEIGHT
+const SIDEBAR_WIDTH = 80; // matches Sidebar's DEFAULT_WIDTH
 // Fixed content height for the body's vertical scroll area. Sized to
 // fit the tallest tab content (Settings / Forms) at the 720×1280
 // portrait baseline. When the viewport is taller than this (portrait
@@ -105,6 +113,11 @@ export class UiComponentsDemoScene extends Component {
   private bodyHandles: UiComponentHandle[] = [];
   private bodyOwnedNodes: Node[] = [];
   private currentTab: TabKey = 'inputs';
+  /** App-nav state — rendered as Sidebar (landscape) or BottomNav
+   *  (portrait). Single source of truth across orientation rebuilds
+   *  so rotating preserves the selected item. Independent from
+   *  `currentTab`. */
+  private appNavKey: AppNavKey = 'home';
 
   start(): void {
     if (!this.uiRoot) {
@@ -175,13 +188,22 @@ export class UiComponentsDemoScene extends Component {
     const height = canvasH;
     const theme = this.theme;
 
+    // Orientation-aware layout: landscape shows Sidebar at the left
+    // edge (80px wide); portrait shows BottomNav at the bottom.
+    // The body area (title + tabs + scrollable body) lives in the
+    // remaining space to the RIGHT of the sidebar (landscape) or
+    // FULL width (portrait).
+    const isLandscape = width > height;
+    const bodyAreaWidth = isLandscape ? width - SIDEBAR_WIDTH : width;
+    const bodyAreaCenterX = isLandscape ? SIDEBAR_WIDTH / 2 : 0;
+
     const title = makeLabel('UI Components Demo', {
       theme,
-      width,
+      width: bodyAreaWidth,
       fontSize: theme.fontSize.lg + TITLE_FONT_BOOST,
       align: 'center',
     });
-    title.setPosition(0, height / 2 - TITLE_HEIGHT / 2 - 8);
+    title.setPosition(bodyAreaCenterX, height / 2 - TITLE_HEIGHT / 2 - 8);
     this.uiRoot.addChild(title);
     // Track so disposeBody() can clean it up on orientation rebuild;
     // otherwise a second title appears after Rotate.
@@ -189,7 +211,7 @@ export class UiComponentsDemoScene extends Component {
 
     const tabsHandle = createTabs<TabKey>({
       theme,
-      width,
+      width: bodyAreaWidth,
       height: TAB_BAR_HEIGHT,
       tabs: [
         { key: 'inputs', label: 'Inputs' },
@@ -216,24 +238,28 @@ export class UiComponentsDemoScene extends Component {
         this.renderTab(key);
       },
     });
-    tabsHandle.node.setPosition(0, height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4);
+    tabsHandle.node.setPosition(bodyAreaCenterX, height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4);
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
 
     // Body: a fixed-size viewport (Mask + vertical ScrollView)
     // holding a taller scrollable content node. Title / top Tabs
-    // stay above the body, scene-level BottomNav stays BELOW it —
-    // body claims the middle region only, and gives up height for
-    // both fixed elements so neither overlaps body content.
+    // stay above the body; portrait BottomNav stays BELOW the body;
+    // landscape Sidebar stays to its LEFT. Body claims whatever's
+    // left over.
     const body = new Node('UiDemo_body');
     const bodyUi = body.addComponent(UITransform);
-    const bodyHeight = height - TITLE_HEIGHT - TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT - 12;
-    bodyUi.setContentSize(width, bodyHeight);
-    // Body center is offset DOWN from canvas center by half the
-    // top-fixed stack (title + tabs) MINUS half the bottom-fixed
-    // stack (bottomNav). Net = (TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2.
-    const bodyCenterY = -(TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2 - 4;
-    body.setPosition(0, bodyCenterY);
+    const bodyHeight = isLandscape
+      ? height - TITLE_HEIGHT - TAB_BAR_HEIGHT - 12
+      : height - TITLE_HEIGHT - TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT - 12;
+    bodyUi.setContentSize(bodyAreaWidth, bodyHeight);
+    // Vertical center: in portrait we give up height for both the
+    // top-fixed stack (title + tabs) and the bottom-fixed BottomNav.
+    // In landscape only the top stack exists; BottomNav slot is 0.
+    const bodyCenterY = isLandscape
+      ? -(TITLE_HEIGHT + TAB_BAR_HEIGHT) / 2 - 4
+      : -(TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2 - 4;
+    body.setPosition(bodyAreaCenterX, bodyCenterY);
     const bodyMask = body.addComponent(Mask);
     bodyMask.type = Mask.Type.GRAPHICS_RECT;
     const bodyScroll = body.addComponent(ScrollView);
@@ -253,37 +279,60 @@ export class UiComponentsDemoScene extends Component {
     // position aligns content's top with viewport's top.
     const bodyContent = new Node('UiDemo_body_content');
     const bodyContentUi = bodyContent.addComponent(UITransform);
-    bodyContentUi.setContentSize(width, BODY_CONTENT_HEIGHT);
+    bodyContentUi.setContentSize(bodyAreaWidth, BODY_CONTENT_HEIGHT);
     bodyContentUi.setAnchorPoint(0.5, 0.5);
     bodyContent.setPosition(0, bodyHeight / 2 - BODY_CONTENT_HEIGHT / 2, 0);
     body.addChild(bodyContent);
     bodyScroll.content = bodyContent;
     this.bodyContentNode = bodyContent;
 
-    // Scene-level BottomNav: pinned at canvas bottom across ALL
-    // tabs, never inside the body ScrollView. Mirrors how real apps
-    // place a global bottom navigation bar — solves the "have to
-    // scroll to see BottomNav" report from C-phase visual gate.
-    const bottomNav = createBottomNav<string>({
-      theme,
-      width,
-      items: [
-        { key: 'home', label: '首页', iconText: '🏠' },
-        { key: 'rooms', label: '房间', iconText: '🎮', badge: 3 },
-        { key: 'chat', label: '消息', iconText: '💬', badge: 142 },
-        { key: 'me', label: '我的', iconText: '👤' },
-      ],
-      activeKey: 'home',
-      onChange: (k) => console.log('[demo] bottom-nav', k),
-    });
-    bottomNav.node.setPosition(0, -height / 2 + BOTTOM_NAV_HEIGHT / 2);
-    this.uiRoot.addChild(bottomNav.node);
-    // Push the handle so disposeBody() tears it down on orientation
-    // rebuild (and onDestroy). Tab switches don't touch it because
-    // its node is outside bodyNode.
-    this.bodyHandles.push(bottomNav);
+    // Scene-level App nav: orientation-aware presentation.
+    // Landscape → Sidebar (left edge), Portrait → BottomNav (bottom).
+    // Both share `this.appNavKey` so rotating preserves selection.
+    this.renderAppNav(isLandscape, canvasW, canvasH);
 
     this.renderTab(this.currentTab);
+  }
+
+  /** Render the App nav presentation that fits the current
+   *  orientation. Both presentations share `this.appNavKey` as the
+   *  single source of truth — clicking either updates it; the next
+   *  orientation rebuild picks up the same value. */
+  private renderAppNav(isLandscape: boolean, canvasW: number, canvasH: number): void {
+    if (!this.uiRoot) return;
+    const items: ReadonlyArray<SidebarItem<AppNavKey>> = [
+      { key: 'home',  label: '首页', iconText: '🏠' },
+      { key: 'rooms', label: '房间', iconText: '🎮', badge: 3 },
+      { key: 'chat',  label: '消息', iconText: '💬', badge: 142 },
+      { key: 'me',    label: '我的', iconText: '👤' },
+    ];
+    if (isLandscape) {
+      const sidebar = createSidebar<AppNavKey>({
+        theme: this.theme,
+        width: SIDEBAR_WIDTH,
+        height: canvasH,
+        logoText: 'U',
+        items,
+        activeKey: this.appNavKey,
+        profile: { name: 'Brian', userId: '10000192', avatarText: 'B' },
+        onChange: (k) => { this.appNavKey = k; },
+      });
+      // Anchor sidebar's center at canvas-left + SIDEBAR_WIDTH/2.
+      sidebar.node.setPosition(-canvasW / 2 + SIDEBAR_WIDTH / 2, 0);
+      this.uiRoot.addChild(sidebar.node);
+      this.bodyHandles.push(sidebar);
+    } else {
+      const bottomNav = createBottomNav<AppNavKey>({
+        theme: this.theme,
+        width: canvasW,
+        items,
+        activeKey: this.appNavKey,
+        onChange: (k) => { this.appNavKey = k; },
+      });
+      bottomNav.node.setPosition(0, -canvasH / 2 + BOTTOM_NAV_HEIGHT / 2);
+      this.uiRoot.addChild(bottomNav.node);
+      this.bodyHandles.push(bottomNav);
+    }
   }
 
   private renderTab(key: TabKey): void {
