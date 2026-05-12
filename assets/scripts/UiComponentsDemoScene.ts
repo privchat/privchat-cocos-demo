@@ -852,7 +852,7 @@ function renderNavigationTab(ctx: TabContext): void {
   table.node.setPosition(0, y - tableH / 2);
   parent.addChild(table.node);
   ctx.register(table);
-  y -= tableH + 16;
+  y -= tableH + 36; // breathing room between DataTable and Load-more button
 
   // "加载更多 ⌄" — secondary chip (dark fill + gold border), not
   // bare ghost text. Matches the design panel's button-shaped
