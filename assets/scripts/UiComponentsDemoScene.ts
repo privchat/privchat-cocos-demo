@@ -219,7 +219,10 @@ export class UiComponentsDemoScene extends Component {
       theme,
       width: bodyAreaWidth,
       height: TAB_BAR_HEIGHT,
-      variant: 'capsuleUnderline',
+      // Top-level Tabs use capsule-only — the design ref has NO
+      // underline below the strip; the active tab's gold-edged
+      // capsule + outer glow already carries the selection signal.
+      variant: 'capsule',
       tabs: [
         { key: 'inputs',     label: 'Inputs',     iconText: '✎' },
         { key: 'button',     label: 'Button',     iconText: '◉' },
@@ -691,7 +694,7 @@ function renderNavigationTab(ctx: TabContext): void {
     theme,
     width: innerWidth,
     height: 44,
-    variant: 'capsuleUnderline',
+    variant: 'capsule',
     tabs: [
       { key: 'duel', label: '对决' },
       { key: 'rooms', label: '房间' },
