@@ -708,24 +708,28 @@ function renderNavigationTab(ctx: TabContext): void {
   ctx.register(innerTabs);
   y -= 64;
 
-  // Radio row A/B/C/D — horizontal layout per design.
-  const radio = createRadioGroup<string>({
+  // Sort selector A/B/C/D — box-style tabs (capsule variant), not
+  // RadioGroup. Design panel 3 renders these as 4 evenly-spaced
+  // chip-shaped boxes with a gold-edged active capsule on the
+  // selected letter — exactly the Tabs (variant='capsule') visual.
+  const sortTabs = createTabs<string>({
     theme,
     width: innerWidth,
-    direction: 'horizontal',
-    options: [
-      { value: 'A', label: 'A' },
-      { value: 'B', label: 'B' },
-      { value: 'C', label: 'C' },
-      { value: 'D', label: 'D' },
+    height: 44,
+    variant: 'capsule',
+    tabs: [
+      { key: 'A', label: 'A' },
+      { key: 'B', label: 'B' },
+      { key: 'C', label: 'C' },
+      { key: 'D', label: 'D' },
     ],
-    value: 'B',
-    onChange: (v) => console.log('[demo] navigation radio', v),
+    activeKey: 'B',
+    onChange: (k) => console.log('[demo] sort tab', k),
   });
-  radio.node.setPosition(0, y - 16);
-  parent.addChild(radio.node);
-  ctx.register(radio);
-  y -= 52;
+  sortTabs.node.setPosition(0, y - 22);
+  parent.addChild(sortTabs.node);
+  ctx.register(sortTabs);
+  y -= 64;
 
   // DataTable: room list.
   interface RoomRow {
