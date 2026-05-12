@@ -769,7 +769,7 @@ function renderNavigationTab(ctx: TabContext): void {
 // ---- Tab: Display ----
 
 function renderDisplayTab(ctx: TabContext): void {
-  const { theme, parent, width, uiRoot } = ctx;
+  const { theme, parent, width } = ctx;
   const leftEdge = -width / 2 + 24;
   const rowWidth = width - 48;
   let y = ctx.height / 2 - 28;
@@ -848,44 +848,10 @@ function renderDisplayTab(ctx: TabContext): void {
   grid.node.setPosition(0, y - 32);
   parent.addChild(grid.node);
   ctx.register(grid);
-  y -= 80;
-
-  // Bonus: Toast / Spinner triggers (existing demo carry-over,
-  // visually condensed).
-  y -= 8;
-  const toastKinds: Array<{ kind: 'info' | 'success' | 'warning' | 'danger'; label: string; }> = [
-    { kind: 'info',    label: 'Info'    },
-    { kind: 'success', label: 'Success' },
-    { kind: 'warning', label: 'Warning' },
-    { kind: 'danger',  label: 'Danger'  },
-  ];
-  toastKinds.forEach((t, i) => {
-    const btn = createButtonBase({
-      theme, label: t.label,
-      variant: i === 1 ? 'primary' : i === 3 ? 'danger' : 'secondary',
-      width: 80, height: 32,
-      onClick: () => showToast({
-        theme, parent: uiRoot,
-        text: `${t.label} toast at ${formatTime()}`, kind: t.kind,
-      }),
-    });
-    btn.node.setPosition(leftEdge + 50 + i * 92, y);
-    parent.addChild(btn.node);
-    ctx.register(btn);
-  });
-
-  y -= 44;
-  const spinner = createLoadingSpinner({ theme, size: 28 });
-  spinner.node.setPosition(leftEdge + 40, y);
-  parent.addChild(spinner.node);
-  ctx.register(spinner);
-  const toggleBtn = createButtonBase({
-    theme, label: 'Toggle Spinner', variant: 'secondary', width: 140, height: 32,
-    onClick: () => spinner.setVisible(!spinner.isVisible()),
-  });
-  toggleBtn.node.setPosition(leftEdge + 160, y);
-  parent.addChild(toggleBtn.node);
-  ctx.register(toggleBtn);
+  // (Toast / Spinner triggers removed per design panel 4 — they
+  // do not belong on the Display tab. Toast is exercised from the
+  // Overlay tab and via the global Toast trigger Phase C left
+  // wired into the demo.)
 }
 
 // ---- Tab: Overlay (Phase E) ----
