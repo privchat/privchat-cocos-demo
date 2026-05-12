@@ -49,12 +49,18 @@ import {
   createSlider,
   createSwitch,
   createTabs,
+  createTag,
+  createProfileCard,
+  createStatGrid,
+  createDataTable,
   showActionSheet,
   showFloatingText,
   showToast,
   type AttentionHandle,
   type AvatarStatus,
+  type DataColumn,
   type SidebarItem,
+  type StatEntry,
   type UiTheme,
   type UiComponentHandle,
 } from '@privchat/cocos';
@@ -213,17 +219,18 @@ export class UiComponentsDemoScene extends Component {
       theme,
       width: bodyAreaWidth,
       height: TAB_BAR_HEIGHT,
+      variant: 'capsuleUnderline',
       tabs: [
-        { key: 'inputs', label: 'Inputs' },
-        { key: 'button', label: 'Button' },
-        { key: 'navigation', label: 'Navigation' },
-        { key: 'display', label: 'Display' },
-        { key: 'overlay', label: 'Overlay' },
-        { key: 'settings', label: 'Settings' },
-        { key: 'forms', label: 'Forms' },
-        { key: 'liveops', label: 'Live Ops' },
-        { key: 'guide', label: 'Guide' },
-        { key: 'poker', label: 'Poker' },
+        { key: 'inputs',     label: 'Inputs',     iconText: '✎' },
+        { key: 'button',     label: 'Button',     iconText: '◉' },
+        { key: 'navigation', label: 'Navigation', iconText: '☰' },
+        { key: 'display',    label: 'Display',    iconText: '▣' },
+        { key: 'overlay',    label: 'Overlay',    iconText: '◐' },
+        { key: 'settings',   label: 'Settings',   iconText: '⚙' },
+        { key: 'forms',      label: 'Forms',      iconText: '☑' },
+        { key: 'liveops',    label: 'Live Ops',   iconText: '◆' },
+        { key: 'guide',      label: 'Guide',      iconText: '?' },
+        { key: 'poker',      label: 'Poker',      iconText: '♠' },
       ],
       activeKey: this.currentTab,
       // scrollable: true honors the kit's fixed-dp scale rule
@@ -241,6 +248,23 @@ export class UiComponentsDemoScene extends Component {
     tabsHandle.node.setPosition(bodyAreaCenterX, height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4);
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
+
+    // Decorative theme toggle (sun glyph) at top-right of body area.
+    // Clicking is a no-op — runtime theme switching is out-of-scope.
+    const themeToggleBtn = createButtonBase({
+      theme,
+      label: '☀',
+      variant: 'ghost',
+      width: 32,
+      height: 32,
+      onClick: () => console.log('[demo] theme toggle (decorative, no-op)'),
+    });
+    themeToggleBtn.node.setPosition(
+      bodyAreaCenterX + bodyAreaWidth / 2 - 22,
+      height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4,
+    );
+    this.uiRoot.addChild(themeToggleBtn.node);
+    this.bodyHandles.push(themeToggleBtn);
 
     // Body: a fixed-size viewport (Mask + vertical ScrollView)
     // holding a taller scrollable content node. Title / top Tabs
@@ -465,100 +489,81 @@ interface TabContext {
 
 function renderInputsTab(ctx: TabContext): void {
   const { theme, parent, width } = ctx;
-  // Per-row leading edge for left-aligned controls (checkboxes,
-  // radio-group). Centered controls (slider, switch row) use 0.
   const leftEdge = -width / 2 + 24;
+  const rowWidth = width - 48;
   let y = ctx.height / 2 - 28;
 
-  const rowWidth = width - 48;
+  // Section: 基础选项
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '基础选项');
+  y -= 16;
 
   const cb1 = createCheckbox({
-    theme,
-    label: 'Receive notifications',
-    checked: true,
-    width: rowWidth,
+    theme, label: 'Receive notifications', checked: true, width: rowWidth,
     onChange: (v) => console.log('[demo] checkbox-1', v),
   });
   cb1.node.setPosition(leftEdge + rowWidth / 2, y);
   parent.addChild(cb1.node);
   ctx.register(cb1);
-
   y -= 36;
+
   const cb2 = createCheckbox({
-    theme,
-    label: 'Auto-join voice',
-    width: rowWidth,
+    theme, label: 'Auto-join voice', width: rowWidth,
     onChange: (v) => console.log('[demo] checkbox-2', v),
   });
   cb2.node.setPosition(leftEdge + rowWidth / 2, y);
   parent.addChild(cb2.node);
   ctx.register(cb2);
-
   y -= 36;
+
   const cb3 = createCheckbox({
-    theme,
-    label: 'Disabled checkbox',
-    checked: true,
-    disabled: true,
-    width: rowWidth,
+    theme, label: 'Disabled checkbox', checked: true, disabled: true, width: rowWidth,
     onChange: () => { /* should never fire */ },
   });
   cb3.node.setPosition(leftEdge + rowWidth / 2, y);
   parent.addChild(cb3.node);
   ctx.register(cb3);
 
-  y -= SECTION_GAP + 60;
+  // Section: 场景选择
+  y -= 28;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '场景选择');
+  y -= 16;
+
   const radio = createRadioGroup<string>({
     theme,
     options: [
-      { value: 'easy', label: '休闲场' },
+      { value: 'easy',   label: '休闲场' },
       { value: 'normal', label: '普通场' },
-      { value: 'hard', label: '高手场' },
+      { value: 'hard',   label: '高手场' },
     ],
     value: 'normal',
     width: rowWidth,
     onChange: (v) => console.log('[demo] radio', v),
   });
-  radio.node.setPosition(leftEdge + rowWidth / 2, y - 10);
+  radio.node.setPosition(leftEdge + rowWidth / 2, y - 60);
   parent.addChild(radio.node);
   ctx.register(radio);
 
-  y -= SECTION_GAP + 100;
-  const sw1 = createSwitch({
-    theme,
-    on: true,
-    onChange: (v) => console.log('[demo] switch-1', v),
-  });
+  // 3-Switch row.
+  y -= 160;
+  const sw1 = createSwitch({ theme, on: true,  onChange: (v) => console.log('[demo] switch-1', v) });
   sw1.node.setPosition(-80, y);
   parent.addChild(sw1.node);
   ctx.register(sw1);
 
-  const sw2 = createSwitch({
-    theme,
-    on: false,
-    onChange: (v) => console.log('[demo] switch-2', v),
-  });
+  const sw2 = createSwitch({ theme, on: false, onChange: (v) => console.log('[demo] switch-2', v) });
   sw2.node.setPosition(0, y);
   parent.addChild(sw2.node);
   ctx.register(sw2);
 
-  const sw3 = createSwitch({
-    theme,
-    on: true,
-    disabled: true,
-    onChange: () => { /* should never fire */ },
-  });
+  const sw3 = createSwitch({ theme, on: true, disabled: true, onChange: () => {} });
   sw3.node.setPosition(80, y);
   parent.addChild(sw3.node);
   ctx.register(sw3);
 
-  y -= SECTION_GAP + 30;
+  // Slider.
+  y -= 50;
   const slider = createSlider({
-    theme,
-    min: 0,
-    max: 100,
-    step: 5,
-    value: 30,
+    theme, min: 0, max: 100, step: 5, value: 30,
     width: Math.min(rowWidth, 320),
     onChange: (v) => console.log('[demo] slider drag', v),
     onCommit: (v) => console.log('[demo] slider commit', v),
@@ -580,7 +585,7 @@ function renderButtonTab(ctx: TabContext): void {
   const { theme, parent, width, height } = ctx;
   const leftEdge = -width / 2 + 24;
   const rowWidth = width - 48;
-  let y = height / 2 - 32;
+  let y = height / 2 - 28;
 
   type V = 'primary' | 'secondary' | 'ghost' | 'danger';
   const variants: Array<{ v: V; label: string }> = [
@@ -590,123 +595,86 @@ function renderButtonTab(ctx: TabContext): void {
     { v: 'danger',    label: 'Danger' },
   ];
 
-  // Row 1: Variants — normal state, default height (36).
-  const row1Title = makeLabel('Variants', { theme, width: rowWidth, align: 'left' });
-  row1Title.setPosition(leftEdge + rowWidth / 2, y);
-  parent.addChild(row1Title);
-  ctx.registerNode(row1Title);
+  const btnStep = (rowWidth - 8) / 4;
+  const btnW = btnStep - 12;
 
-  y -= 30;
-  const step = 132;
+  // Variants 变体
+  y = mountSectionHeader(parent, ctx, y, rowWidth, 'Variants 变体');
+  y -= 32;
   variants.forEach(({ v, label }, i) => {
     const btn = createButtonBase({
-      theme,
-      label,
-      variant: v,
-      width: 120,
-      height: 36,
+      theme, label, variant: v, width: btnW, height: 40,
       onClick: () => console.log('[demo] button', v),
     });
-    btn.node.setPosition(leftEdge + 60 + i * step, y);
+    btn.node.setPosition(leftEdge + btnStep * (i + 0.5), y);
     parent.addChild(btn.node);
     ctx.register(btn);
   });
 
-  // Row 2: Variants — disabled state.
-  y -= 50;
-  const row2Title = makeLabel('Disabled', { theme, width: rowWidth, align: 'left' });
-  row2Title.setPosition(leftEdge + rowWidth / 2, y);
-  parent.addChild(row2Title);
-  ctx.registerNode(row2Title);
-
-  y -= 30;
+  // Disabled 禁用状态
+  y -= 48;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, 'Disabled 禁用状态');
+  y -= 32;
   variants.forEach(({ v, label }, i) => {
     const btn = createButtonBase({
-      theme,
-      label,
-      variant: v,
-      width: 120,
-      height: 36,
-      disabled: true,
-      onClick: () => console.log('[demo] disabled button leaked', v),
+      theme, label, variant: v, width: btnW, height: 40, disabled: true,
+      onClick: () => {},
     });
-    btn.node.setPosition(leftEdge + 60 + i * step, y);
+    btn.node.setPosition(leftEdge + btnStep * (i + 0.5), y);
     parent.addChild(btn.node);
     ctx.register(btn);
   });
 
-  // Row 3: Sizes — same variant, three recommended heights.
-  y -= 50;
-  const row3Title = makeLabel('Sizes', { theme, width: rowWidth, align: 'left' });
-  row3Title.setPosition(leftEdge + rowWidth / 2, y);
-  parent.addChild(row3Title);
-  ctx.registerNode(row3Title);
-
+  // Sizes 尺寸
+  y -= 48;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, 'Sizes 尺寸');
   y -= 36;
-  const sizes: Array<{ h: number; label: string; w: number }> = [
-    { h: 28, label: 'Small',   w: 96 },
-    { h: 36, label: 'Medium',  w: 120 },
-    { h: 44, label: 'Large',   w: 144 },
+  const sizes = [
+    { h: 32, label: 'Small'  },
+    { h: 40, label: 'Medium' },
+    { h: 48, label: 'Large'  },
   ];
-  let cursorX = leftEdge + 60;
-  sizes.forEach(({ h, label, w }) => {
+  const sizeStep = (rowWidth - 8) / 3;
+  sizes.forEach(({ h, label }, i) => {
     const btn = createButtonBase({
-      theme,
-      label,
-      variant: 'primary',
-      width: w,
-      height: h,
+      theme, label, variant: 'primary',
+      width: sizeStep - 16, height: h,
       onClick: () => console.log('[demo] size', label),
     });
-    btn.node.setPosition(cursorX + w / 2 - 60, y);
+    btn.node.setPosition(leftEdge + sizeStep * (i + 0.5), y);
     parent.addChild(btn.node);
     ctx.register(btn);
-    cursorX += w + 24;
   });
 
-  // Row 4: Click counter — proves onClick fires + setDisabled blocks.
-  y -= 60;
+  // Click counter + Toggle Disable row.
+  y -= 64;
   let clickCount = 0;
-  const counterLabel = makeLabel('Clicks: 0', { theme, width: 200, align: 'left' });
-  counterLabel.setPosition(leftEdge + 100, y);
+  const counterLabel = makeLabel('Clicks: 0', { theme, width: 120, align: 'left' });
+  counterLabel.setPosition(leftEdge + 60, y);
   parent.addChild(counterLabel);
   ctx.registerNode(counterLabel);
 
   const clickBtn = createButtonBase({
-    theme,
-    label: 'Click me',
-    variant: 'primary',
-    width: 120,
-    height: 36,
+    theme, label: 'Click me', variant: 'primary', width: 120, height: 36,
     onClick: () => {
       clickCount += 1;
       const lc = counterLabel.getComponent(Label);
       if (lc) lc.string = `Clicks: ${clickCount}`;
     },
   });
-  clickBtn.node.setPosition(leftEdge + 260, y);
+  clickBtn.node.setPosition(leftEdge + 220, y);
   parent.addChild(clickBtn.node);
   ctx.register(clickBtn);
 
+  let demoDisabled = false;
   const toggleDisableBtn = createButtonBase({
-    theme,
-    label: 'Toggle Disable',
-    variant: 'secondary',
-    width: 140,
-    height: 36,
+    theme, label: 'Toggle Disable', variant: 'secondary', width: 140, height: 36,
     onClick: () => {
-      // Flip the click button's disabled state — illustrates the
-      // setDisabled() imperative API + that click events drop while
-      // disabled (counter stops incrementing).
-      const newDisabled = (clickBtn as unknown as {
-        // ButtonBaseHandle doesn't expose `isDisabled`; track locally.
-        _demoDisabled?: boolean;
-      })._demoDisabled !== true;
-      (clickBtn as unknown as { _demoDisabled?: boolean })._demoDisabled = newDisabled;
-      clickBtn.setDisabled(newDisabled);
+      demoDisabled = !demoDisabled;
+      clickBtn.setDisabled(demoDisabled);
     },
   });
-  toggleDisableBtn.node.setPosition(leftEdge + 400, y);
+  toggleDisableBtn.node.setPosition(leftEdge + 360, y);
   parent.addChild(toggleDisableBtn.node);
   ctx.register(toggleDisableBtn);
 }
@@ -716,139 +684,202 @@ function renderButtonTab(ctx: TabContext): void {
 function renderNavigationTab(ctx: TabContext): void {
   const { theme, parent, width, height } = ctx;
   const innerWidth = width - 48;
-  let y = height / 2 - 32;
+  let y = height / 2 - 24;
 
+  // Sub-tabs: 对决 / 房间 / 资料
   const innerTabs = createTabs<string>({
     theme,
     width: innerWidth,
+    height: 44,
+    variant: 'capsuleUnderline',
     tabs: [
-      { key: 'list', label: '列表' },
+      { key: 'duel', label: '对决' },
       { key: 'rooms', label: '房间' },
       { key: 'profile', label: '资料' },
     ],
-    onChange: (k) => console.log('[demo] inner tabs', k),
+    activeKey: 'duel',
+    onChange: (k) => console.log('[demo] sub-tab', k),
   });
-  innerTabs.node.setPosition(0, y);
+  innerTabs.node.setPosition(0, y - 22);
   parent.addChild(innerTabs.node);
   ctx.register(innerTabs);
+  y -= 64;
 
-  y -= 60;
-  const innerTabs2 = createTabs<string>({
+  // Radio row A/B/C/D.
+  const radio = createRadioGroup<string>({
     theme,
     width: innerWidth,
-    tabs: [
-      { key: 'a', label: 'A' },
-      { key: 'b', label: 'B' },
-      { key: 'c', label: 'C' },
-      { key: 'd', label: 'D' },
+    options: [
+      { value: 'A', label: 'A' },
+      { value: 'B', label: 'B' },
+      { value: 'C', label: 'C' },
+      { value: 'D', label: 'D' },
     ],
-    activeKey: 'b',
-    disabled: true,
-    onChange: () => { /* should never fire */ },
+    value: 'B',
+    onChange: (v) => console.log('[demo] navigation radio', v),
   });
-  innerTabs2.node.setPosition(0, y);
-  parent.addChild(innerTabs2.node);
-  ctx.register(innerTabs2);
+  radio.node.setPosition(0, y - 16);
+  parent.addChild(radio.node);
+  ctx.register(radio);
+  y -= 52;
 
-  // NOTE: BottomNav is no longer rendered inside this tab. It's
-  // promoted to scene-level in build() and stays pinned at the
-  // canvas bottom across all tabs — mirrors how real apps use
-  // BottomNav as a global navigation surface. The fixed mount also
-  // means it's NEVER part of the body's scrollable area; rotating
-  // to landscape no longer hides it behind a 695px scroll.
+  // DataTable: room list.
+  interface RoomRow {
+    name: string;
+    type: string;
+    players: string;
+    status: string;
+  }
+  const cols: ReadonlyArray<DataColumn<RoomRow>> = [
+    { key: 'name',    header: '房间名称', width: 'auto', align: 'left' },
+    { key: 'type',    header: '类型',     width: 100,    align: 'left' },
+    { key: 'players', header: '玩家',     width: 80,     align: 'center' },
+    { key: 'status',  header: '状态',     width: 110,    align: 'left' },
+  ];
+  const rows: ReadonlyArray<RoomRow> = [
+    { name: '巅峰对决',   type: '高手场', players: '8/10', status: '● 进行中' },
+    { name: '极速竞技',   type: '普通场', players: '5/10', status: '● 等待中' },
+    { name: '休闲娱乐',   type: '休闲场', players: '2/8',  status: '● 等待中' },
+    { name: '新手训练',   type: '休闲场', players: '1/6',  status: '● 等待中' },
+  ];
+  const table = createDataTable<RoomRow>({
+    theme, width: innerWidth, columns: cols, rows,
+    onRowClick: (row) => console.log('[demo] row', row.name),
+  });
+  const tableH = 40 + 44 * rows.length;
+  table.node.setPosition(0, y - tableH / 2);
+  parent.addChild(table.node);
+  ctx.register(table);
+  y -= tableH + 16;
+
+  // "加载更多 ⌄" ghost button.
+  const moreBtn = createButtonBase({
+    theme, label: '加载更多 ⌄', variant: 'ghost', width: 140, height: 36,
+    onClick: () => console.log('[demo] load more'),
+  });
+  moreBtn.node.setPosition(0, y);
+  parent.addChild(moreBtn.node);
+  ctx.register(moreBtn);
 }
 
 // ---- Tab: Display ----
 
 function renderDisplayTab(ctx: TabContext): void {
-  const { theme, parent, width, height, uiRoot } = ctx;
-  const STATUSES: AvatarStatus[] = ['online', 'offline', 'unknown', 'busy', 'away'];
-  const NAMES = ['Alice', 'Bob', 'Cara', 'Dan', 'Eve'];
+  const { theme, parent, width, uiRoot } = ctx;
+  const leftEdge = -width / 2 + 24;
+  const rowWidth = width - 48;
+  let y = ctx.height / 2 - 28;
 
-  // Avatar grid: 2 rows × 5 columns. Top row circle, bottom rounded.
-  let y = height / 2 - 50;
-  const cellW = Math.floor(width / 5);
-  for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 5; col++) {
-      const a = createAvatar({
-        theme,
-        name: NAMES[col],
-        size: 44,
-        shape: row === 0 ? 'circle' : 'rounded',
-        status: STATUSES[col],
-      });
-      a.node.setPosition(-width / 2 + cellW * (col + 0.5), y - row * 56);
-      parent.addChild(a.node);
-      ctx.register(a);
-    }
-  }
-
-  // Badge row: dot + 4 count variants.
-  y -= 130;
-  const badgeLabel = makeLabel('Badges:', { theme, width: 80, align: 'left' });
-  badgeLabel.setPosition(-width / 2 + 50, y);
-  parent.addChild(badgeLabel);
-  ctx.registerNode(badgeLabel);
-
-  const badges: Array<{ variant: 'dot' | 'count'; count: number | null; }> = [
-    { variant: 'dot', count: 1 },
-    { variant: 'count', count: 1 },
-    { variant: 'count', count: 5 },
-    { variant: 'count', count: 99 },
-    { variant: 'count', count: 100 }, // renders "99+"
-  ];
-  badges.forEach((b, i) => {
-    const handle = createBadge({ theme, variant: b.variant, count: b.count });
-    handle.node.setPosition(-width / 2 + 110 + i * 36, y);
-    parent.addChild(handle.node);
-    ctx.register(handle);
+  // Section: 信息卡片 — ProfileCard
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '信息卡片');
+  y -= 12;
+  const profile = createProfileCard({
+    theme, width: rowWidth,
+    name: 'Brian',
+    vipLevel: 'VIP',
+    userId: '10000192',
+    online: true,
   });
+  profile.node.setPosition(0, y - 38);
+  parent.addChild(profile.node);
+  ctx.register(profile);
+  y -= 92;
 
-  // Toast triggers.
+  // Section: 进度条 — ProgressBar
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '进度条');
+  y -= 32;
+  const pb = createProgressBar({
+    theme, width: rowWidth - 32, value: 75, max: 100, showLabel: true,
+  });
+  pb.node.setPosition(0, y);
+  parent.addChild(pb.node);
+  ctx.register(pb);
+  y -= 32;
+
+  // Section: 标签 Tag
+  y -= 12;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '标签 Tag');
+  y -= 24;
+  const tagDefs: Array<{ label: string; color: 'gold' | 'blue' | 'purple' }> = [
+    { label: '因人赛',   color: 'gold' },
+    { label: '排位赛',   color: 'blue' },
+    { label: '限时活动', color: 'purple' },
+  ];
+  let tagX = leftEdge + 12;
+  tagDefs.forEach((t) => {
+    const tag = createTag({ theme, label: t.label, color: t.color });
+    const tagUi = tag.node.getComponent(UITransform);
+    const tagW = tagUi?.width ?? 60;
+    tag.node.setPosition(tagX + tagW / 2, y);
+    parent.addChild(tag.node);
+    ctx.register(tag);
+    tagX += tagW + 12;
+  });
+  y -= 30;
+
+  // Section: 徽章 Badge
+  y -= 12;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '徽章 Badge');
+  y -= 32;
+  const badgeGlyphs = ['👑', '🛡', '💎'];
+  badgeGlyphs.forEach((g, i) => {
+    const glyphLabel = makeLabel(g, { theme, width: 44, fontSize: 28, align: 'center' });
+    glyphLabel.setPosition(leftEdge + 32 + i * 56, y);
+    parent.addChild(glyphLabel);
+    ctx.registerNode(glyphLabel);
+  });
   y -= 40;
+
+  // Section: 成就 Achievements — StatGrid
+  y -= 12;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '成就 Achievements');
+  y -= 36;
+  const stats: ReadonlyArray<StatEntry> = [
+    { value: '128',  label: '胜场' },
+    { value: '63%',  label: '胜率' },
+    { value: '4.6',  label: 'K/D' },
+    { value: '256',  label: 'MVP' },
+  ];
+  const grid = createStatGrid({ theme, width: rowWidth, stats, columns: 4 });
+  grid.node.setPosition(0, y - 32);
+  parent.addChild(grid.node);
+  ctx.register(grid);
+  y -= 80;
+
+  // Bonus: Toast / Spinner triggers (existing demo carry-over,
+  // visually condensed).
+  y -= 8;
   const toastKinds: Array<{ kind: 'info' | 'success' | 'warning' | 'danger'; label: string; }> = [
-    { kind: 'info', label: 'Info' },
+    { kind: 'info',    label: 'Info'    },
     { kind: 'success', label: 'Success' },
     { kind: 'warning', label: 'Warning' },
-    { kind: 'danger', label: 'Danger' },
+    { kind: 'danger',  label: 'Danger'  },
   ];
   toastKinds.forEach((t, i) => {
     const btn = createButtonBase({
-      theme,
-      label: t.label,
-      variant: i === 0 ? 'secondary' : i === 1 ? 'primary' : i === 2 ? 'secondary' : 'danger',
-      width: 80,
-      height: 36,
-      onClick: () => {
-        showToast({
-          theme,
-          parent: uiRoot,
-          text: `${t.label} toast at ${formatTime()}`,
-          kind: t.kind,
-        });
-      },
+      theme, label: t.label,
+      variant: i === 1 ? 'primary' : i === 3 ? 'danger' : 'secondary',
+      width: 80, height: 32,
+      onClick: () => showToast({
+        theme, parent: uiRoot,
+        text: `${t.label} toast at ${formatTime()}`, kind: t.kind,
+      }),
     });
-    btn.node.setPosition(-width / 2 + 60 + i * 92, y);
+    btn.node.setPosition(leftEdge + 50 + i * 92, y);
     parent.addChild(btn.node);
     ctx.register(btn);
   });
 
-  // LoadingSpinner + visibility toggle.
-  y -= 50;
-  const spinner = createLoadingSpinner({ theme, size: 32 });
-  spinner.node.setPosition(-60, y);
+  y -= 44;
+  const spinner = createLoadingSpinner({ theme, size: 28 });
+  spinner.node.setPosition(leftEdge + 40, y);
   parent.addChild(spinner.node);
   ctx.register(spinner);
-
   const toggleBtn = createButtonBase({
-    theme,
-    label: 'Toggle Spinner',
-    variant: 'secondary',
-    width: 140,
-    height: 36,
+    theme, label: 'Toggle Spinner', variant: 'secondary', width: 140, height: 32,
     onClick: () => spinner.setVisible(!spinner.isVisible()),
   });
-  toggleBtn.node.setPosition(40, y);
+  toggleBtn.node.setPosition(leftEdge + 160, y);
   parent.addChild(toggleBtn.node);
   ctx.register(toggleBtn);
 }
@@ -863,10 +894,7 @@ function renderOverlayTab(ctx: TabContext): void {
   // Section: Dialog triggers — 3 buttons.
   let y = height / 2 - 40;
 
-  const sectionTitle = makeLabel('Dialog', { theme, width: rowWidth, align: 'left' });
-  sectionTitle.setPosition(leftEdge + rowWidth / 2, y);
-  parent.addChild(sectionTitle);
-  ctx.registerNode(sectionTitle);
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '对话框 Dialog');
 
   y -= 36;
   const defaultDialogBtn = createButtonBase({
@@ -940,10 +968,7 @@ function renderOverlayTab(ctx: TabContext): void {
 
   // Section: BottomSheet trigger.
   y -= 56;
-  const bsTitle = makeLabel('BottomSheet', { theme, width: rowWidth, align: 'left' });
-  bsTitle.setPosition(leftEdge + rowWidth / 2, y);
-  parent.addChild(bsTitle);
-  ctx.registerNode(bsTitle);
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '底部面板 BottomSheet');
 
   y -= 36;
   const bsBtn = createButtonBase({
@@ -990,10 +1015,7 @@ function renderOverlayTab(ctx: TabContext): void {
 
   // Section: ProgressBar samples.
   y -= 56;
-  const pbTitle = makeLabel('ProgressBar', { theme, width: rowWidth, align: 'left' });
-  pbTitle.setPosition(leftEdge + rowWidth / 2, y);
-  parent.addChild(pbTitle);
-  ctx.registerNode(pbTitle);
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '进度条 ProgressBar');
 
   // Per-row gap is sized so two ProgressBar containers (height + label
   // area when showLabel=true) don't visually crowd each other. Bar
@@ -1323,7 +1345,7 @@ function renderSettingsTab(ctx: TabContext): void {
   cursorY -= gameCardHeight + CARD_GAP;
 
   // ---- Section: 德州设置 ----
-  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '德州设置');
+  cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '系统设置');
   cursorY -= SECTION_HEADER_GAP;
 
   const pokerRows = 2;
