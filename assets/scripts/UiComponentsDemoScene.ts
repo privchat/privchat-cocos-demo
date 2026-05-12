@@ -303,6 +303,35 @@ export class UiComponentsDemoScene extends Component {
       ? -(TITLE_HEIGHT + TAB_BAR_HEIGHT) / 2 - 4
       : -(TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2 - 4;
     body.setPosition(bodyAreaCenterX, bodyCenterY);
+
+    // Outer body panel — surface1 fill + goldDim border (same hue
+    // as the Tabs hairline divider). Rendered BEFORE the body node
+    // so it sits z-below the Mask + ScrollView. Slightly larger
+    // than body so the gold edge shows around the viewport.
+    const PANEL_INSET = 2;
+    const panelW = bodyAreaWidth + PANEL_INSET * 2;
+    const panelH = bodyHeight + PANEL_INSET * 2;
+    const bodyPanelBg = new Node('UiDemo_body_panel_bg');
+    const bpUi = bodyPanelBg.addComponent(UITransform);
+    bpUi.setContentSize(panelW, panelH);
+    const bpG = bodyPanelBg.addComponent(Graphics);
+    bpG.fillColor = hexToColor(theme.colors.surface1 ?? theme.colors.surface);
+    const bpAny = bpG as unknown as {
+      roundRect?: (x: number, y: number, w: number, h: number, r: number) => void;
+    };
+    if (typeof bpAny.roundRect === 'function') {
+      bpAny.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
+    }
+    bpG.fill();
+    bpG.strokeColor = hexToColor(theme.colors.goldDim ?? theme.colors.border);
+    bpG.lineWidth = 1;
+    if (typeof bpAny.roundRect === 'function') {
+      bpAny.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
+    }
+    bpG.stroke();
+    bodyPanelBg.setPosition(bodyAreaCenterX, bodyCenterY);
+    this.uiRoot.addChild(bodyPanelBg);
+    this.bodyOwnedNodes.push(bodyPanelBg);
     const bodyMask = body.addComponent(Mask);
     bodyMask.type = Mask.Type.GRAPHICS_RECT;
     const bodyScroll = body.addComponent(ScrollView);
