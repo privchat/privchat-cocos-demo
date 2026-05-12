@@ -264,7 +264,23 @@ export class UiComponentsDemoScene extends Component {
         this.renderTab(key);
       },
     });
-    tabsHandle.node.setPosition(bodyAreaCenterX, height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4);
+    const tabsCenterY = height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4;
+    // Top nav-bar background — surface panel matching BottomNav's
+    // depth so the two bars read as the same chrome. Painted BEFORE
+    // tabsHandle so it lives z-below the Tabs node and its mask.
+    const TOP_BAR_PANEL_H = TAB_BAR_HEIGHT + 12; // Tabs node UITransform = height + DIVIDER_GUTTER
+    const topBarBg = new Node('TopBar_bg');
+    const tbUi = topBarBg.addComponent(UITransform);
+    tbUi.setContentSize(bodyAreaWidth, TOP_BAR_PANEL_H);
+    const tbG = topBarBg.addComponent(Graphics);
+    tbG.fillColor = hexToColor(theme.colors.surface ?? theme.colors.background);
+    tbG.rect(-bodyAreaWidth / 2, -TOP_BAR_PANEL_H / 2, bodyAreaWidth, TOP_BAR_PANEL_H);
+    tbG.fill();
+    topBarBg.setPosition(bodyAreaCenterX, tabsCenterY);
+    this.uiRoot.addChild(topBarBg);
+    this.bodyOwnedNodes.push(topBarBg);
+
+    tabsHandle.node.setPosition(bodyAreaCenterX, tabsCenterY);
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
 
