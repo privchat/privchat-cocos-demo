@@ -10,7 +10,7 @@
 // no SDK / network / login dependencies. Switch tabs to exercise
 // each component category.
 
-import { Color, Component, Label, Layout, Mask, Node, ScrollView, UITransform, _decorator, screen, view } from 'cc';
+import { Color, Component, Graphics, Label, Layout, Mask, Node, ScrollView, UITransform, _decorator, screen, view } from 'cc';
 import {
   DefaultUiTheme,
   attachTweenAttention,
@@ -708,14 +708,52 @@ function renderNavigationTab(ctx: TabContext): void {
   ctx.register(innerTabs);
   y -= 64;
 
-  // Sort selector A/B/C/D — box-style tabs (capsule variant), not
-  // RadioGroup. Design panel 3 renders these as 4 evenly-spaced
-  // chip-shaped boxes with a gold-edged active capsule on the
-  // selected letter — exactly the Tabs (variant='capsule') visual.
+  // Sort selector A/B/C/D — a segmented-control look: 4 evenly-
+  // spaced tab boxes inside a single rounded surface container.
+  // The container provides the "outer frame" of the segmented
+  // control; the inner Tabs(variant='capsule') paints the
+  // gold-edged active capsule on the selected letter.
+  const SORT_BOX_H = 48;
+  const sortBox = new Node('sortBox');
+  const sortBoxUi = sortBox.addComponent(UITransform);
+  sortBoxUi.setContentSize(innerWidth, SORT_BOX_H);
+  sortBox.setPosition(0, y - SORT_BOX_H / 2);
+  const sortBoxG = sortBox.addComponent(Graphics);
+  // Inline hex → RGBA parse (demo can't reach into the library's
+  // internal parseHexColor helper).
+  const hexToColor = (hex: string): Color => {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    const a = h.length === 8 ? parseInt(h.substring(6, 8), 16) : 255;
+    return new Color(r, g, b, a);
+  };
+  const surface1Hex = theme.colors.surface1 ?? theme.colors.surface;
+  const goldDimHex = theme.colors.goldDim ?? theme.colors.border;
+  const sortBoxAny = sortBoxG as unknown as {
+    roundRect?: (x: number, y: number, w: number, h: number, r: number) => void;
+  };
+  // Fill: surface1 rounded rect.
+  sortBoxG.fillColor = hexToColor(surface1Hex);
+  if (typeof sortBoxAny.roundRect === 'function') {
+    sortBoxAny.roundRect(-innerWidth / 2, -SORT_BOX_H / 2, innerWidth, SORT_BOX_H, 8);
+  }
+  sortBoxG.fill();
+  // Outer goldDim border.
+  sortBoxG.strokeColor = hexToColor(goldDimHex);
+  sortBoxG.lineWidth = 1;
+  if (typeof sortBoxAny.roundRect === 'function') {
+    sortBoxAny.roundRect(-innerWidth / 2, -SORT_BOX_H / 2, innerWidth, SORT_BOX_H, 8);
+  }
+  sortBoxG.stroke();
+  parent.addChild(sortBox);
+  ctx.registerNode(sortBox);
+
   const sortTabs = createTabs<string>({
     theme,
-    width: innerWidth,
-    height: 44,
+    width: innerWidth - 8,
+    height: SORT_BOX_H - 8,
     variant: 'capsule',
     tabs: [
       { key: 'A', label: 'A' },
@@ -726,10 +764,10 @@ function renderNavigationTab(ctx: TabContext): void {
     activeKey: 'B',
     onChange: (k) => console.log('[demo] sort tab', k),
   });
-  sortTabs.node.setPosition(0, y - 22);
+  sortTabs.node.setPosition(0, y - SORT_BOX_H / 2);
   parent.addChild(sortTabs.node);
   ctx.register(sortTabs);
-  y -= 64;
+  y -= SORT_BOX_H + 16;
 
   // DataTable: room list.
   interface RoomRow {
@@ -760,9 +798,11 @@ function renderNavigationTab(ctx: TabContext): void {
   ctx.register(table);
   y -= tableH + 16;
 
-  // "加载更多 ⌄" ghost button.
+  // "加载更多 ⌄" — secondary chip (dark fill + gold border), not
+  // bare ghost text. Matches the design panel's button-shaped
+  // pagination affordance.
   const moreBtn = createButtonBase({
-    theme, label: '加载更多 ⌄', variant: 'ghost', width: 140, height: 36,
+    theme, label: '加载更多 ⌄', variant: 'secondary', width: 160, height: 38,
     onClick: () => console.log('[demo] load more'),
   });
   moreBtn.node.setPosition(0, y);
