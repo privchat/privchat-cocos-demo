@@ -194,6 +194,22 @@ export class UiComponentsDemoScene extends Component {
     const height = canvasH;
     const theme = this.theme;
 
+    // Full-screen background — NOT pure black. A warm-charcoal
+    // panel that the page chrome (title / tabs / body) sits on,
+    // so cards have something to contrast against. Without this
+    // every component reads as "floating on void".
+    const bgNode = new Node('UiDemo_root_bg');
+    const bgUi = bgNode.addComponent(UITransform);
+    bgUi.setContentSize(canvasW, canvasH);
+    const bgG = bgNode.addComponent(Graphics);
+    const bgHex = theme.colors.background ?? '#0B0D10';
+    const bgRgb = hexToColor(bgHex);
+    bgG.fillColor = new Color(bgRgb.r, bgRgb.g, bgRgb.b, 255);
+    bgG.rect(-canvasW / 2, -canvasH / 2, canvasW, canvasH);
+    bgG.fill();
+    this.uiRoot.addChild(bgNode);
+    this.bodyOwnedNodes.push(bgNode);
+
     // Orientation-aware layout: landscape shows Sidebar at the left
     // edge (80px wide); portrait shows BottomNav at the bottom.
     // The body area (title + tabs + scrollable body) lives in the
@@ -328,10 +344,14 @@ export class UiComponentsDemoScene extends Component {
   private renderAppNav(isLandscape: boolean, canvasW: number, canvasH: number): void {
     if (!this.uiRoot) return;
     const items: ReadonlyArray<SidebarItem<AppNavKey>> = [
-      { key: 'home',  label: '首页', iconText: '🏠' },
-      { key: 'rooms', label: '房间', iconText: '🎮', badge: 3 },
-      { key: 'chat',  label: '消息', iconText: '💬', badge: 142 },
-      { key: 'me',    label: '我的', iconText: '👤' },
+      // Monochrome glyphs (NOT emoji) — design ref uses outlined
+      // icons; emoji renders inconsistently across platforms and
+      // clashes with the BlackGold language. Final-quality apps
+      // wire SpriteFrame icons here; v1 demo uses unicode shapes.
+      { key: 'home',  label: '首页', iconText: '⌂' },
+      { key: 'rooms', label: '房间', iconText: '◈', badge: 3 },
+      { key: 'chat',  label: '消息', iconText: '✉', badge: 142 },
+      { key: 'me',    label: '我的', iconText: '◉' },
     ];
     if (isLandscape) {
       const sidebar = createSidebar<AppNavKey>({
@@ -719,16 +739,7 @@ function renderNavigationTab(ctx: TabContext): void {
   sortBoxUi.setContentSize(innerWidth, SORT_BOX_H);
   sortBox.setPosition(0, y - SORT_BOX_H / 2);
   const sortBoxG = sortBox.addComponent(Graphics);
-  // Inline hex → RGBA parse (demo can't reach into the library's
-  // internal parseHexColor helper).
-  const hexToColor = (hex: string): Color => {
-    const h = hex.replace('#', '');
-    const r = parseInt(h.substring(0, 2), 16);
-    const g = parseInt(h.substring(2, 4), 16);
-    const b = parseInt(h.substring(4, 6), 16);
-    const a = h.length === 8 ? parseInt(h.substring(6, 8), 16) : 255;
-    return new Color(r, g, b, a);
-  };
+  // hexToColor is a module-level helper (defined near makeLabel).
   const surface1Hex = theme.colors.surface1 ?? theme.colors.surface;
   const goldDimHex = theme.colors.goldDim ?? theme.colors.border;
   const sortBoxAny = sortBoxG as unknown as {
@@ -814,88 +825,209 @@ function renderNavigationTab(ctx: TabContext): void {
 
 function renderDisplayTab(ctx: TabContext): void {
   const { theme, parent, width } = ctx;
-  const leftEdge = -width / 2 + 24;
-  const rowWidth = width - 48;
-  let y = ctx.height / 2 - 28;
+  const visible = view.getVisibleSize();
+  // Two-column layout if the viewport is wider than tall (landscape).
+  const isWide = visible.width > visible.height;
 
-  // Section: 信息卡片 — ProfileCard
-  y = mountSectionHeader(parent, ctx, y, rowWidth, '信息卡片');
-  y -= 12;
+  const SIDE_PADDING = 24;
+  const SECTION_GAP = 18;
+  const ROW_GAP = 18;
+  const innerW = width - SIDE_PADDING * 2;
+
+  let y = ctx.height / 2 - SIDE_PADDING;
+
+  // ----- Section header helper (inside a Card) -----
+  const mountHeaderInCard = (
+    cardContent: Node,
+    title: string,
+    cardWidth: number,
+    headerY: number,
+  ): void => {
+    const h = createSectionHeader({
+      parent: cardContent,
+      theme, width: cardWidth - 12, title,
+    });
+    h.node.setPosition(0, headerY);
+    ctx.register(h);
+  };
+
+  // ----- 1. ProfileCard (always full-width — it carries its own card chrome) -----
+  const PROFILE_H = 120;
   const profile = createProfileCard({
-    theme, width: rowWidth,
-    name: 'Brian',
-    vipLevel: 'VIP',
-    userId: '10000192',
-    online: true,
+    theme, width: innerW,
+    name: 'Brian', vipLevel: 'VIP', userId: '10000192', online: true,
   });
-  profile.node.setPosition(0, y - 38);
+  profile.node.setPosition(0, y - PROFILE_H / 2);
   parent.addChild(profile.node);
   ctx.register(profile);
-  y -= 92;
+  y -= PROFILE_H + SECTION_GAP;
 
-  // Section: 进度条 — ProgressBar
-  y = mountSectionHeader(parent, ctx, y, rowWidth, '进度条');
-  y -= 32;
-  const pb = createProgressBar({
-    theme, width: rowWidth - 32, value: 75, max: 100, showLabel: true,
-  });
-  pb.node.setPosition(0, y);
-  parent.addChild(pb.node);
-  ctx.register(pb);
-  y -= 32;
+  // ----- 2. Progress + Tag row -----
+  const PB_TAG_CARD_H = 110;
+  const progressBarW = (cw: number): number => cw - 40;
 
-  // Section: 标签 Tag
-  y -= 12;
-  y = mountSectionHeader(parent, ctx, y, rowWidth, '标签 Tag');
-  y -= 24;
-  const tagDefs: Array<{ label: string; color: 'gold' | 'blue' | 'purple' }> = [
-    { label: '因人赛',   color: 'gold' },
-    { label: '排位赛',   color: 'blue' },
-    { label: '限时活动', color: 'purple' },
-  ];
-  let tagX = leftEdge + 12;
-  tagDefs.forEach((t) => {
-    const tag = createTag({ theme, label: t.label, color: t.color });
-    const tagUi = tag.node.getComponent(UITransform);
-    const tagW = tagUi?.width ?? 60;
-    tag.node.setPosition(tagX + tagW / 2, y);
-    parent.addChild(tag.node);
-    ctx.register(tag);
-    tagX += tagW + 12;
-  });
-  y -= 30;
+  const renderProgressIntoCard = (cardWidth: number, cardCenterX: number, topY: number): void => {
+    const card = createCard({
+      parent, theme, width: cardWidth, height: PB_TAG_CARD_H,
+    });
+    card.node.setPosition(cardCenterX, topY - PB_TAG_CARD_H / 2);
+    ctx.register(card);
+    mountHeaderInCard(card.contentNode, '进度条', cardWidth, PB_TAG_CARD_H / 2 - 24);
+    const pb = createProgressBar({
+      theme, width: progressBarW(cardWidth), value: 75, max: 100, showLabel: true,
+    });
+    pb.node.setPosition(0, -10);
+    card.contentNode.addChild(pb.node);
+    ctx.register(pb);
+  };
 
-  // Section: 徽章 Badge
-  y -= 12;
-  y = mountSectionHeader(parent, ctx, y, rowWidth, '徽章 Badge');
-  y -= 32;
-  const badgeGlyphs = ['👑', '🛡', '💎'];
-  badgeGlyphs.forEach((g, i) => {
-    const glyphLabel = makeLabel(g, { theme, width: 44, fontSize: 28, align: 'center' });
-    glyphLabel.setPosition(leftEdge + 32 + i * 56, y);
-    parent.addChild(glyphLabel);
-    ctx.registerNode(glyphLabel);
-  });
-  y -= 40;
+  const renderTagIntoCard = (cardWidth: number, cardCenterX: number, topY: number): void => {
+    const card = createCard({
+      parent, theme, width: cardWidth, height: PB_TAG_CARD_H,
+    });
+    card.node.setPosition(cardCenterX, topY - PB_TAG_CARD_H / 2);
+    ctx.register(card);
+    mountHeaderInCard(card.contentNode, '标签 Tag', cardWidth, PB_TAG_CARD_H / 2 - 24);
 
-  // Section: 成就 Achievements — StatGrid
-  y -= 12;
-  y = mountSectionHeader(parent, ctx, y, rowWidth, '成就 Achievements');
-  y -= 36;
-  const stats: ReadonlyArray<StatEntry> = [
-    { value: '128',  label: '胜场' },
-    { value: '63%',  label: '胜率' },
-    { value: '4.6',  label: 'K/D' },
-    { value: '256',  label: 'MVP' },
-  ];
-  const grid = createStatGrid({ theme, width: rowWidth, stats, columns: 4 });
-  grid.node.setPosition(0, y - 32);
-  parent.addChild(grid.node);
-  ctx.register(grid);
-  // (Toast / Spinner triggers removed per design panel 4 — they
-  // do not belong on the Display tab. Toast is exercised from the
-  // Overlay tab and via the global Toast trigger Phase C left
-  // wired into the demo.)
+    const tagDefs: Array<{ label: string; color: 'gold' | 'blue' | 'purple' }> = [
+      { label: '团人赛',   color: 'gold' },
+      { label: '排位赛',   color: 'blue' },
+      { label: '限时活动', color: 'purple' },
+    ];
+    let tagX = -(cardWidth / 2) + 18;
+    tagDefs.forEach((t) => {
+      const tag = createTag({ theme, label: t.label, color: t.color });
+      const tagUi = tag.node.getComponent(UITransform);
+      const tagW = tagUi?.width ?? 60;
+      tag.node.setPosition(tagX + tagW / 2, -10);
+      card.contentNode.addChild(tag.node);
+      ctx.register(tag);
+      tagX += tagW + 10;
+    });
+  };
+
+  if (isWide) {
+    const halfW = (innerW - ROW_GAP) / 2;
+    renderProgressIntoCard(halfW, -innerW / 2 + halfW / 2, y);
+    renderTagIntoCard(halfW, innerW / 2 - halfW / 2, y);
+    y -= PB_TAG_CARD_H + SECTION_GAP;
+  } else {
+    renderProgressIntoCard(innerW, 0, y);
+    y -= PB_TAG_CARD_H + ROW_GAP;
+    renderTagIntoCard(innerW, 0, y);
+    y -= PB_TAG_CARD_H + SECTION_GAP;
+  }
+
+  // ----- 3. Badge + Achievements row -----
+  const BADGE_CARD_H = 150;
+  const STAT_CARD_H = 150;
+
+  const renderBadgeIntoCard = (cardWidth: number, cardCenterX: number, topY: number): void => {
+    const card = createCard({
+      parent, theme, width: cardWidth, height: BADGE_CARD_H,
+    });
+    card.node.setPosition(cardCenterX, topY - BADGE_CARD_H / 2);
+    ctx.register(card);
+    mountHeaderInCard(card.contentNode, '徽章 Badge', cardWidth, BADGE_CARD_H / 2 - 24);
+
+    // Three solid-color glyph badges (no emoji). Each badge is a
+    // rounded square with subtle border + center glyph.
+    const badgeDefs: Array<{ glyph: string; colorHex: string }> = [
+      { glyph: '♛', colorHex: theme.colors.gold ?? '#D6B56D' },           // crown — gold
+      { glyph: '◇', colorHex: '#7CA7D9' },                                // shield — blue
+      { glyph: '◆', colorHex: '#B45CFF' },                                // diamond — purple
+    ];
+    const BADGE_SIZE = 56;
+    const BADGE_GAP = 12;
+    const badgeRowW = badgeDefs.length * BADGE_SIZE + (badgeDefs.length - 1) * BADGE_GAP;
+    let bx = -badgeRowW / 2 + BADGE_SIZE / 2;
+    badgeDefs.forEach((b) => {
+      const badge = renderSoloBadge(card.contentNode, b.glyph, b.colorHex, BADGE_SIZE);
+      badge.setPosition(bx, -10);
+      ctx.registerNode(badge);
+      bx += BADGE_SIZE + BADGE_GAP;
+    });
+  };
+
+  const renderStatIntoCard = (cardWidth: number, cardCenterX: number, topY: number): void => {
+    const card = createCard({
+      parent, theme, width: cardWidth, height: STAT_CARD_H,
+    });
+    card.node.setPosition(cardCenterX, topY - STAT_CARD_H / 2);
+    ctx.register(card);
+    mountHeaderInCard(card.contentNode, '成就 Achievements', cardWidth, STAT_CARD_H / 2 - 24);
+
+    const stats: ReadonlyArray<StatEntry> = [
+      { value: '128',  label: '胜场' },
+      { value: '63%',  label: '胜率' },
+      { value: '4.6',  label: 'K/D' },
+      { value: '256',  label: 'MVP' },
+    ];
+    const grid = createStatGrid({
+      theme, width: cardWidth - 24, stats, columns: 4, cellHeight: 72,
+    });
+    grid.node.setPosition(0, -10);
+    card.contentNode.addChild(grid.node);
+    ctx.register(grid);
+  };
+
+  if (isWide) {
+    const badgeW = (innerW - ROW_GAP) * 0.38;
+    const statW = (innerW - ROW_GAP) * 0.62;
+    renderBadgeIntoCard(badgeW, -innerW / 2 + badgeW / 2, y);
+    renderStatIntoCard(statW, innerW / 2 - statW / 2, y);
+    y -= Math.max(BADGE_CARD_H, STAT_CARD_H) + SECTION_GAP;
+  } else {
+    renderBadgeIntoCard(innerW, 0, y);
+    y -= BADGE_CARD_H + ROW_GAP;
+    renderStatIntoCard(innerW, 0, y);
+    y -= STAT_CARD_H + SECTION_GAP;
+  }
+}
+
+/** Render a solo (no-count, no-host-Badge-component) badge container
+ *  with surface2 fill + colored border + center glyph. Returns the
+ *  badge Node mounted in `parent`. */
+function renderSoloBadge(
+  parent: Node,
+  glyph: string,
+  borderHex: string,
+  size: number,
+): Node {
+  const node = new Node('SoloBadge');
+  const nodeUi = node.addComponent(UITransform);
+  nodeUi.setContentSize(size, size);
+  const g = node.addComponent(Graphics);
+  // Dark inner fill.
+  g.fillColor = new Color(0x1B, 0x1B, 0x19, 255);
+  const gAny = g as unknown as {
+    roundRect?: (x: number, y: number, w: number, h: number, r: number) => void;
+  };
+  if (typeof gAny.roundRect === 'function') {
+    gAny.roundRect(-size / 2, -size / 2, size, size, 12);
+  }
+  g.fill();
+  // Colored border.
+  g.strokeColor = hexToColor(borderHex);
+  g.lineWidth = 2;
+  if (typeof gAny.roundRect === 'function') {
+    gAny.roundRect(-size / 2, -size / 2, size, size, 12);
+  }
+  g.stroke();
+  parent.addChild(node);
+
+  // Center glyph.
+  const glyphNode = new Node('SoloBadge_glyph');
+  glyphNode.addComponent(UITransform).setContentSize(size, size);
+  const labelComp = glyphNode.addComponent(Label);
+  labelComp.string = glyph;
+  labelComp.fontSize = Math.round(size * 0.55);
+  labelComp.lineHeight = Math.round(size * 0.55);
+  labelComp.color = hexToColor(borderHex);
+  labelComp.horizontalAlign = Label.HorizontalAlign.CENTER;
+  labelComp.verticalAlign = Label.VerticalAlign.CENTER;
+  node.addChild(glyphNode);
+  return node;
 }
 
 // ---- Tab: Overlay (Phase E) ----
@@ -2098,6 +2230,19 @@ interface MakeLabelOpts {
   width: number;
   fontSize?: number;
   align?: 'left' | 'center' | 'right';
+}
+
+/** Parse a hex color string (#RRGGBB or #RRGGBBAA) to a cc.Color.
+ *  Demo-internal helper because the library's parseHexColor is not
+ *  re-exported. */
+function hexToColor(hex: string): Color {
+  const h = hex.replace('#', '');
+  return new Color(
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+    h.length === 8 ? parseInt(h.substring(6, 8), 16) : 255,
+  );
 }
 
 function makeLabel(text: string, opts: MakeLabelOpts): Node {
