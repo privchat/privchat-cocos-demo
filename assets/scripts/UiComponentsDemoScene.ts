@@ -708,10 +708,11 @@ function renderNavigationTab(ctx: TabContext): void {
   ctx.register(innerTabs);
   y -= 64;
 
-  // Radio row A/B/C/D.
+  // Radio row A/B/C/D — horizontal layout per design.
   const radio = createRadioGroup<string>({
     theme,
     width: innerWidth,
+    direction: 'horizontal',
     options: [
       { value: 'A', label: 'A' },
       { value: 'B', label: 'B' },
