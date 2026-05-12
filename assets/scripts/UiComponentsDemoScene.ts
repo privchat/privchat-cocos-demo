@@ -227,7 +227,7 @@ export class UiComponentsDemoScene extends Component {
         { key: 'display',    label: 'Display',    iconText: '▣' },
         { key: 'overlay',    label: 'Overlay',    iconText: '◐' },
         { key: 'settings',   label: 'Settings',   iconText: '⚙' },
-        { key: 'forms',      label: 'Forms',      iconText: '☑' },
+        { key: 'forms',      label: 'Forms',      iconText: '✓' },
         { key: 'liveops',    label: 'Live Ops',   iconText: '◆' },
         { key: 'guide',      label: 'Guide',      iconText: '?' },
         { key: 'poker',      label: 'Poker',      iconText: '♠' },
