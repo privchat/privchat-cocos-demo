@@ -31,7 +31,7 @@ becomes a live event log.
    has no public "create room" path the demo can call. Pre-create one
    manually:
    ```bash
-   curl -X POST http://127.0.0.1:9090/api/admin/room \
+   curl -X POST http://127.0.0.1:9090/api/service/room \
      -H 'Content-Type: application/json' \
      -d '{"channel_id": 100}'
    ```

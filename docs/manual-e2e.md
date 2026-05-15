@@ -74,7 +74,7 @@ Cocos Creator 3.8.8.
 2. Set `serverUrl` to your gateway's WebSocket URL.
 3. Pre-create a Room channel server-side (see
    [`room-subscription-e2e.md`](./room-subscription-e2e.md) for the
-   `curl POST /api/admin/room` command).
+   `curl POST /api/service/room` command).
 4. Preview, log in with **real** credentials.
 5. From the menu:
    - 「好友列表 / 聊天」 — see your real channel list. Names lazy-fetch
