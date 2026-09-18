@@ -1,39 +1,40 @@
-// Room subscription test panel. Renders subscribe/unsubscribe controls
-// + status banner + events placeholder into a host Node, drives the
-// PrivchatCocos.RoomSubscriptionController under the hood.
+// Room subscription test panel — Phase-G UI Kit primitives only:
+//   - createNavBar       page header (title + < 返回)
+//   - createTextInput    Room channelId input (gold focus border)
+//   - createButtonBase   Subscribe (primary) + Unsubscribe (secondary)
+//   - plain cc.Label     status banner + events feed (display-only,
+//                        no kit primitive needed)
 //
-// Why a function helper instead of a Cocos Component: the host scene
-// (DemoChatScene) wants this as one of several pages it can swap into
-// the same root node. Same pattern as LoginPage.ts / MenuPage.ts.
+// Wires `PrivchatCocos.createRoomSubscriptionController` underneath
+// for actual room subscribe / publish-receive testing.
 
+import { Color, Graphics, Label, Node, UITransform } from 'cc';
 import {
-  Button,
-  Color,
-  EditBox,
-  Graphics,
-  Label,
-  Node,
-  UITransform,
-} from 'cc';
-import {
+  ChannelType,
   PrivchatCocos,
+  NAV_BAR_HEIGHT,
+  createButtonBase,
+  createNavBar,
+  createTextInput,
+  getUiTheme,
+  type ButtonBaseHandle,
+  type NavBarHandle,
   type PrivchatClient,
   type RoomSubscriptionController,
   type RoomSubscriptionState,
+  type TextInputHandle,
   type ThemeConfig,
 } from '@privchat/cocos';
 
-const ROOM_CHANNEL_TYPE = 2;
+// wire 编号来自 privchat-protocol ChannelType(1=Direct 2=Group 3=Room);2 是群聊,订阅会被当"非群成员"拒掉。
+const ROOM_CHANNEL_TYPE = ChannelType.Room;
 
 export interface RoomPanelOptions {
   root: Node;
   theme: ThemeConfig;
   client: PrivchatClient;
-  /** Default channelId to prefill the input. */
   defaultChannelId: string;
-  /** Optional ticket (JWT) for Room subscriptions. Leave empty for now. */
   ticket?: string;
-  /** "返回" button → host navigates back to menu. */
   onBack: () => void;
 }
 
@@ -45,177 +46,62 @@ interface RGBA { r: number; g: number; b: number; a: number; }
 
 export function createRoomPanel(opts: RoomPanelOptions): RoomPanelHandle {
   const { root, theme, client, defaultChannelId, ticket, onBack } = opts;
+  const uiTheme = getUiTheme(theme);
   const ui = root.getComponent(UITransform) ?? root.addComponent(UITransform);
   const width = ui.width || 360;
   const height = ui.height || 640;
 
   const colorBg = parseHex(theme.colors.background);
-  const colorSurface = parseHex(theme.colors.surface);
-  const colorPrimary = parseHex(theme.colors.primary);
   const colorText = parseHex(theme.colors.textPrimary);
   const colorSecondary = parseHex(theme.colors.textSecondary);
   const colorDanger = parseHex(theme.colors.danger);
+  const colorSurface = parseHex(theme.colors.surface);
 
-  const owned: Node[] = [];
+  const ownedNodes: Node[] = [];
+  const ownedHandles: Array<{ dispose(): void }> = [];
   let controller: RoomSubscriptionController | null = null;
   let unsubscribeStateListener: (() => void) | null = null;
 
-  // Page background
-  const bg = createRect('RoomPanelBg', width, height, 0, colorBg);
+  // ----- Page bg -----
+  const bg = createPlainRect('RoomPanelBg', width, height, colorBg);
   bg.setPosition(0, 0);
   root.addChild(bg);
-  owned.push(bg);
+  ownedNodes.push(bg);
 
-  // Header bar with title + back button (mirrors mountChatView header look)
-  const HEADER_H = 48;
-  const header = createRect('RoomHeader', width, HEADER_H, 0, colorSurface);
-  header.setPosition(0, height / 2 - HEADER_H / 2);
-  root.addChild(header);
-  owned.push(header);
-
-  const headerTitle = createLabel('RoomHeaderTitle', {
-    text: 'Room 订阅测试',
-    fontSize: theme.fontSize.message + 1,
-    color: colorText,
-    width: width - 140,
-    height: HEADER_H,
-    align: 'center',
+  // ----- NavBar (kit) -----
+  const navBar: NavBarHandle = createNavBar({
+    parent: root,
+    theme,
+    width,
+    title: 'Room 订阅测试',
+    onBack,
   });
-  headerTitle.setPosition(0, height / 2 - HEADER_H / 2);
-  root.addChild(headerTitle);
-  owned.push(headerTitle);
+  ownedHandles.push(navBar);
 
-  const backBtn = createButton({
-    name: 'RoomBack',
-    width: 56,
-    height: HEADER_H - 12,
-    radius: 8,
-    bgColor: { r: 0, g: 0, b: 0, a: 0 },
-    textColor: colorPrimary,
-    text: '< 返回',
-    fontSize: theme.fontSize.input - 1,
+  // ----- channelId input (kit TextInput) -----
+  const inputW = width - 64;
+  const inputY = height / 2 - NAV_BAR_HEIGHT - 50;
+  const inputSlot = makeSlot(root, 0, inputY);
+  ownedNodes.push(inputSlot);
+
+  const channelInput: TextInputHandle = createTextInput({
+    parent: inputSlot,
+    theme: uiTheme,
+    width: inputW,
+    height: 40,
+    value: defaultChannelId,
+    placeholder: 'Room channelId (e.g. 100)',
+    maxLength: 64,
   });
-  backBtn.setPosition(-width / 2 + 36, height / 2 - HEADER_H / 2);
-  backBtn.on('click', onBack);
-  root.addChild(backBtn);
-  owned.push(backBtn);
+  ownedHandles.push(channelInput);
 
-  // Body — channelId input
-  const inputBg = createRect('RoomInputBg', width - 64, 40, 8, lighten(colorSurface, 0.2));
-  const inputY = height / 2 - HEADER_H - 50;
-  inputBg.setPosition(0, inputY);
-  root.addChild(inputBg);
-  owned.push(inputBg);
-
-  const inputNode = new Node('RoomChannelInput');
-  const inputUi = inputNode.addComponent(UITransform);
-  inputUi.setContentSize(width - 80, 40);
-  const eb = inputNode.addComponent(EditBox);
-  eb.string = defaultChannelId;
-  eb.placeholder = 'Room channelId (e.g. 100)';
-  const ebRuntime = eb as unknown as {
-    fontSize?: number;
-    fontColor?: Color;
-    placeholderFontSize?: number;
-    inputMode?: number;
-  };
-  ebRuntime.fontSize = 16;
-  ebRuntime.placeholderFontSize = 16;
-  ebRuntime.fontColor = new Color(colorText.r, colorText.g, colorText.b, colorText.a);
-  ebRuntime.inputMode = 1; // SINGLE_LINE
-  eb.maxLength = 64;
-  inputNode.setPosition(0, inputY);
-  root.addChild(inputNode);
-  owned.push(inputNode);
-
-  // Subscribe / Unsubscribe row
-  const btnW = (width - 64 - 12) / 2;
+  // ----- Subscribe / Unsubscribe row (kit ButtonBase) -----
+  const btnW = (inputW - 12) / 2;
   const btnY = inputY - 60;
 
-  const subBtn = createButton({
-    name: 'RoomSubscribe',
-    width: btnW,
-    height: 40,
-    radius: 8,
-    bgColor: colorPrimary,
-    textColor: { r: 30, g: 18, b: 8, a: 255 },
-    text: 'Subscribe',
-    fontSize: 15,
-  });
-  subBtn.setPosition(-(btnW + 12) / 2, btnY);
-  root.addChild(subBtn);
-  owned.push(subBtn);
-
-  const unsubBtn = createButton({
-    name: 'RoomUnsubscribe',
-    width: btnW,
-    height: 40,
-    radius: 8,
-    bgColor: lighten(colorSurface, 0.25),
-    textColor: colorText,
-    text: 'Unsubscribe',
-    fontSize: 15,
-  });
-  unsubBtn.setPosition((btnW + 12) / 2, btnY);
-  root.addChild(unsubBtn);
-  owned.push(unsubBtn);
-
-  // Status banner
-  const statusY = btnY - 44;
-  const statusLabel = createLabel('RoomStatus', {
-    text: 'idle — enter channelId then tap Subscribe',
-    fontSize: 14,
-    color: colorText,
-    width: width - 32,
-    height: 24,
-    align: 'center',
-  });
-  statusLabel.setPosition(0, statusY);
-  root.addChild(statusLabel);
-  owned.push(statusLabel);
-  const statusComp = statusLabel.getComponent(Label);
-
-  // Events panel (placeholder until SDK exposes room_publish_received)
-  const eventsBgH = height / 2 - 100;
-  const eventsBgY = -height / 4 - 30;
-  const eventsBg = createRect('RoomEventsBg', width - 32, eventsBgH, 8, lighten(colorSurface, 0.05));
-  eventsBg.setPosition(0, eventsBgY);
-  root.addChild(eventsBg);
-  owned.push(eventsBg);
-
-  const eventsHeader = createLabel('RoomEventsHeader', {
-    text: 'Room Events',
-    fontSize: 13,
-    color: colorSecondary,
-    width: width - 48,
-    height: 20,
-    align: 'left',
-  });
-  eventsHeader.setPosition(0, eventsBgY + eventsBgH / 2 - 14);
-  root.addChild(eventsHeader);
-  owned.push(eventsHeader);
-
-  const eventsBody = createLabel('RoomEventsBody', {
-    text: '(events feed will appear here once SDK exposes room_publish_received)',
-    fontSize: 12,
-    color: colorSecondary,
-    width: width - 48,
-    height: eventsBgH - 32,
-    align: 'left',
-    vAlign: 'top',
-  });
-  eventsBody.setPosition(0, eventsBgY - 8);
-  root.addChild(eventsBody);
-  owned.push(eventsBody);
-  const eventsBodyComp = eventsBody.getComponent(Label);
-
-  // ---------------- handlers ----------------
-
   const onSubscribe = (): void => {
-    const channelId = eb.string.trim() || defaultChannelId;
+    const channelId = (channelInput.getValue() || '').trim() || defaultChannelId;
     if (controller) {
-      // Tear down a previous run before starting a new one — same uid
-      // can't be subscribed twice from one session anyway.
       unsubscribeStateListener?.();
       unsubscribeStateListener = null;
       controller.dispose();
@@ -237,6 +123,85 @@ export function createRoomPanel(opts: RoomPanelOptions): RoomPanelHandle {
     if (!controller) return;
     void controller.unsubscribeRoom();
   };
+
+  const subBtn: ButtonBaseHandle = createButtonBase({
+    theme: uiTheme,
+    label: 'Subscribe',
+    variant: 'primary',
+    width: btnW,
+    height: 40,
+    onClick: onSubscribe,
+  });
+  subBtn.node.setPosition(-(btnW + 12) / 2, btnY);
+  root.addChild(subBtn.node);
+  ownedHandles.push(subBtn);
+
+  const unsubBtn: ButtonBaseHandle = createButtonBase({
+    theme: uiTheme,
+    label: 'Unsubscribe',
+    variant: 'secondary',
+    width: btnW,
+    height: 40,
+    onClick: onUnsubscribe,
+  });
+  unsubBtn.node.setPosition((btnW + 12) / 2, btnY);
+  root.addChild(unsubBtn.node);
+  ownedHandles.push(unsubBtn);
+
+  // ----- Status banner (plain Label) -----
+  const statusY = btnY - 44;
+  const statusLabel = createPlainLabel('RoomStatus', {
+    text: 'idle — enter channelId then tap Subscribe',
+    fontSize: 14,
+    color: colorText,
+    width: width - 32,
+    height: 24,
+    align: 'center',
+  });
+  statusLabel.setPosition(0, statusY);
+  root.addChild(statusLabel);
+  ownedNodes.push(statusLabel);
+  const statusComp = statusLabel.getComponent(Label);
+
+  // ----- Events panel (plain rect + labels) -----
+  const eventsBgH = height / 2 - 100;
+  const eventsBgY = -height / 4 - 30;
+  const eventsBg = createPlainRect(
+    'RoomEventsBg',
+    width - 32,
+    eventsBgH,
+    lighten(colorSurface, 0.05),
+    8,
+  );
+  eventsBg.setPosition(0, eventsBgY);
+  root.addChild(eventsBg);
+  ownedNodes.push(eventsBg);
+
+  const eventsHeader = createPlainLabel('RoomEventsHeader', {
+    text: 'Room Events',
+    fontSize: 13,
+    color: colorSecondary,
+    width: width - 48,
+    height: 20,
+    align: 'left',
+  });
+  eventsHeader.setPosition(0, eventsBgY + eventsBgH / 2 - 14);
+  root.addChild(eventsHeader);
+  ownedNodes.push(eventsHeader);
+
+  const eventsBody = createPlainLabel('RoomEventsBody', {
+    text: '(events feed will appear here once SDK exposes room_publish_received)',
+    fontSize: 12,
+    color: colorSecondary,
+    width: width - 48,
+    height: eventsBgH - 32,
+    align: 'left',
+    vAlign: 'top',
+  });
+  eventsBody.setPosition(0, eventsBgY - 8);
+  root.addChild(eventsBody);
+  ownedNodes.push(eventsBody);
+  const eventsBodyComp = eventsBody.getComponent(Label);
 
   function applyState(vm: RoomSubscriptionState): void {
     if (statusComp) {
@@ -261,19 +226,14 @@ export function createRoomPanel(opts: RoomPanelOptions): RoomPanelHandle {
     }
   }
 
-  subBtn.on('click', onSubscribe);
-  unsubBtn.on('click', onUnsubscribe);
-
   return {
     dispose() {
-      subBtn.off('click', onSubscribe);
-      unsubBtn.off('click', onUnsubscribe);
-      backBtn.off('click', onBack);
       unsubscribeStateListener?.();
       unsubscribeStateListener = null;
       controller?.dispose();
       controller = null;
-      for (const n of owned) {
+      for (const h of ownedHandles) h.dispose();
+      for (const n of ownedNodes) {
         n.removeFromParent();
         n.destroy();
       }
@@ -281,7 +241,15 @@ export function createRoomPanel(opts: RoomPanelOptions): RoomPanelHandle {
   };
 }
 
-// ---------------- shared primitives ----------------
+// ----- internal helpers -----
+
+function makeSlot(parent: Node, x: number, y: number): Node {
+  const slot = new Node('RoomPanelSlot');
+  slot.addComponent(UITransform);
+  slot.setPosition(x, y);
+  parent.addChild(slot);
+  return slot;
+}
 
 function parseHex(input: string): RGBA {
   const hex = input.startsWith('#') ? input.slice(1) : input;
@@ -302,7 +270,7 @@ function lighten(c: RGBA, amount: number): RGBA {
   };
 }
 
-function createRect(name: string, w: number, h: number, radius: number, color: RGBA): Node {
+function createPlainRect(name: string, w: number, h: number, color: RGBA, radius = 0): Node {
   const n = new Node(name);
   const ui = n.addComponent(UITransform);
   ui.setContentSize(w, h);
@@ -321,7 +289,7 @@ function createRect(name: string, w: number, h: number, radius: number, color: R
   return n;
 }
 
-interface LabelOpts {
+interface PlainLabelOpts {
   text: string;
   fontSize: number;
   color: RGBA;
@@ -330,7 +298,8 @@ interface LabelOpts {
   align?: 'left' | 'center' | 'right';
   vAlign?: 'top' | 'center' | 'bottom';
 }
-function createLabel(name: string, opts: LabelOpts): Node {
+
+function createPlainLabel(name: string, opts: PlainLabelOpts): Node {
   const n = new Node(name);
   const ui = n.addComponent(UITransform);
   ui.setContentSize(opts.width, opts.height);
@@ -352,38 +321,5 @@ function createLabel(name: string, opts: LabelOpts): Node {
       : Label.VerticalAlign.CENTER;
   l.overflow = Label.Overflow.SHRINK;
   l.enableWrapText = true;
-  return n;
-}
-
-interface ButtonOpts {
-  name: string;
-  width: number;
-  height: number;
-  radius: number;
-  bgColor: RGBA;
-  textColor: RGBA;
-  text: string;
-  fontSize: number;
-}
-function createButton(opts: ButtonOpts): Node {
-  const n = new Node(opts.name);
-  const ui = n.addComponent(UITransform);
-  ui.setContentSize(opts.width, opts.height);
-  if (opts.bgColor.a > 0) {
-    const bg = createRect(`${opts.name}_bg`, opts.width, opts.height, opts.radius, opts.bgColor);
-    n.addChild(bg);
-  }
-  const lbl = createLabel(`${opts.name}_label`, {
-    text: opts.text,
-    fontSize: opts.fontSize,
-    color: opts.textColor,
-    width: opts.width,
-    height: opts.height,
-    align: 'center',
-  });
-  n.addChild(lbl);
-  const btn = n.addComponent(Button);
-  btn.target = n;
-  btn.transition = 0;
   return n;
 }
