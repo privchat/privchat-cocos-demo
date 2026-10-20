@@ -31,6 +31,7 @@ import {
   createDialog,
   createDivider,
   createDropdown,
+  createDropdownMenu,
   createEmptyState,
   createListRow,
   createLoadingSpinner,
@@ -85,7 +86,6 @@ type TabKey =
 type AppNavKey = 'home' | 'rooms' | 'chat' | 'me';
 
 const TAB_BAR_HEIGHT = 44;
-const TITLE_HEIGHT = 36;
 const TITLE_FONT_BOOST = 4;
 const SECTION_GAP = 16;
 const BOTTOM_NAV_HEIGHT = 56; // matches BottomNav's DEFAULT_HEIGHT
@@ -116,6 +116,14 @@ export class UiComponentsDemoScene extends Component {
   /** ScrollView component on bodyNode; held so renderTab can
    *  reset scroll-to-top on tab switch. */
   private bodyScroll: ScrollView | null = null;
+  /** Body viewport height — captured at build() so per-tab
+   *  setContentHeight() can re-center bodyContent around the body's
+   *  TOP edge after a resize. */
+  private bodyViewportHeight = 0;
+  /** Body x-center — captured at build() so setContentHeight() can
+   *  reposition bodyContent without recomputing landscape/portrait
+   *  sidebar offsets. */
+  private bodyContentX = 0;
   private bodyHandles: UiComponentHandle[] = [];
   private bodyOwnedNodes: Node[] = [];
   private currentTab: TabKey = 'inputs';
@@ -219,16 +227,128 @@ export class UiComponentsDemoScene extends Component {
     const bodyAreaWidth = isLandscape ? width - SIDEBAR_WIDTH : width;
     const bodyAreaCenterX = isLandscape ? SIDEBAR_WIDTH / 2 : 0;
 
+    // ----- Top bar geometry -----
+    // The top bar contains TWO stacked regions, both on the SAME
+    // surface panel:
+    //   - title region: TITLE_AREA_H tall at the top
+    //   - tabs region: TAB_BAR_HEIGHT + DIVIDER_GUTTER (= 56) below
+    // Title region is sized so the title sits comfortably centered
+    // inside it (not crammed against the top edge).
+    const TITLE_AREA_H = 56;
+    const TABS_AREA_H = TAB_BAR_HEIGHT + 12; // matches Tabs node UITransform height
+    const TOP_BAR_H = TITLE_AREA_H + TABS_AREA_H;
+    const topBarTopY = height / 2;
+    const topBarCenterY = topBarTopY - TOP_BAR_H / 2;
+    const titleCenterY = topBarTopY - TITLE_AREA_H / 2;
+    const tabsCenterY = topBarTopY - TITLE_AREA_H - TABS_AREA_H / 2;
+
+    // Top bar surface panel — covers BOTH the title region AND the
+    // tabs region in a single continuous surface fill so the top
+    // chrome reads as one unit. Created BEFORE title so it
+    // automatically sits z-below.
+    const topBarBg = new Node('TopBar_bg');
+    const tbUi = topBarBg.addComponent(UITransform);
+    tbUi.setContentSize(bodyAreaWidth, TOP_BAR_H);
+    const tbG = topBarBg.addComponent(Graphics);
+    tbG.fillColor = hexToColor(theme.colors.surface ?? theme.colors.background);
+    tbG.rect(-bodyAreaWidth / 2, -TOP_BAR_H / 2, bodyAreaWidth, TOP_BAR_H);
+    tbG.fill();
+    topBarBg.setPosition(bodyAreaCenterX, topBarCenterY);
+    this.uiRoot.addChild(topBarBg);
+    this.bodyOwnedNodes.push(topBarBg);
+
+    // ----- User profile (TopBar left edge) -----
+    // Compact avatar + name + id, always visible regardless of
+    // orientation. Replaces the user info that used to live at the
+    // bottom of the landscape Sidebar — putting it in the TopBar
+    // means portrait users (no sidebar) also see it, and the
+    // formerly-empty left edge of the title bar gets used.
+    const PROFILE_AVATAR = 36;
+    const PROFILE_PANEL_W = 168;
+    const profileNode = new Node('TopBar_user_profile');
+    const pUi = profileNode.addComponent(UITransform);
+    pUi.setContentSize(PROFILE_PANEL_W, TITLE_AREA_H);
+    profileNode.setPosition(
+      bodyAreaCenterX - bodyAreaWidth / 2 + PROFILE_PANEL_W / 2 + 16,
+      titleCenterY,
+    );
+    this.uiRoot.addChild(profileNode);
+    this.bodyOwnedNodes.push(profileNode);
+
+    // Avatar circle — filled + gold-dim ring. Drawn via `arc` which
+    // is present in the cc.d.ts shim across cc 3.8.x minor versions
+    // (`circle` was added later and may not be on every shim).
+    const profileAvatar = new Node('TopBar_user_avatar');
+    const paUi = profileAvatar.addComponent(UITransform);
+    paUi.setContentSize(PROFILE_AVATAR, PROFILE_AVATAR);
+    const paG = profileAvatar.addComponent(Graphics);
+    paG.fillColor = hexToColor(theme.colors.surfaceElevated ?? theme.colors.surface);
+    paG.arc(0, 0, PROFILE_AVATAR / 2, 0, Math.PI * 2, false);
+    paG.fill();
+    const ringHex = hexToColor(theme.colors.goldDim ?? theme.colors.border);
+    paG.strokeColor = new Color(ringHex.r, ringHex.g, ringHex.b, ringHex.a);
+    paG.lineWidth = 1.5;
+    paG.arc(0, 0, PROFILE_AVATAR / 2, 0, Math.PI * 2, false);
+    paG.stroke();
+    profileAvatar.setPosition(-PROFILE_PANEL_W / 2 + PROFILE_AVATAR / 2, 0);
+    profileNode.addChild(profileAvatar);
+
+    // Avatar initial letter.
+    const profileInitial = makeLabel('B', {
+      theme,
+      width: PROFILE_AVATAR,
+      fontSize: theme.fontSize.md,
+      align: 'center',
+    });
+    profileInitial.setPosition(-PROFILE_PANEL_W / 2 + PROFILE_AVATAR / 2, 0);
+    profileNode.addChild(profileInitial);
+
+    // Name (top line, primary). Built via raw cc.Label so we can
+    // get left-anchored, clamp-overflow layout — `makeLabel` only
+    // supports center alignment.
+    const profileNameX = -PROFILE_PANEL_W / 2 + PROFILE_AVATAR + 10;
+    const profileTextW = PROFILE_PANEL_W - PROFILE_AVATAR - 16;
+    const profileName = new Node('TopBar_user_name');
+    const pnUi = profileName.addComponent(UITransform);
+    pnUi.setContentSize(profileTextW, 18);
+    pnUi.setAnchorPoint(0, 0.5);
+    const pnLbl = profileName.addComponent(Label);
+    pnLbl.string = 'Brian';
+    pnLbl.fontSize = theme.fontSize.md;
+    pnLbl.lineHeight = theme.fontSize.md + 2;
+    pnLbl.color = hexToColor(theme.colors.textPrimary);
+    pnLbl.horizontalAlign = Label.HorizontalAlign.LEFT;
+    pnLbl.verticalAlign = Label.VerticalAlign.CENTER;
+    pnLbl.overflow = Label.Overflow.CLAMP;
+    profileName.setPosition(profileNameX, 7);
+    profileNode.addChild(profileName);
+
+    // ID (bottom line, secondary).
+    const profileId = new Node('TopBar_user_id');
+    const piUi = profileId.addComponent(UITransform);
+    piUi.setContentSize(profileTextW, 14);
+    piUi.setAnchorPoint(0, 0.5);
+    const piLbl = profileId.addComponent(Label);
+    piLbl.string = '10000192';
+    piLbl.fontSize = theme.fontSize.sm;
+    piLbl.lineHeight = theme.fontSize.sm + 2;
+    piLbl.color = hexToColor(theme.colors.textSecondary);
+    piLbl.horizontalAlign = Label.HorizontalAlign.LEFT;
+    piLbl.verticalAlign = Label.VerticalAlign.CENTER;
+    piLbl.overflow = Label.Overflow.CLAMP;
+    profileId.setPosition(profileNameX, -8);
+    profileNode.addChild(profileId);
+
+    // Title (centered inside title region).
     const title = makeLabel('UI Components Demo', {
       theme,
       width: bodyAreaWidth,
       fontSize: theme.fontSize.lg + TITLE_FONT_BOOST,
       align: 'center',
     });
-    title.setPosition(bodyAreaCenterX, height / 2 - TITLE_HEIGHT / 2 - 8);
+    title.setPosition(bodyAreaCenterX, titleCenterY);
     this.uiRoot.addChild(title);
-    // Track so disposeBody() can clean it up on orientation rebuild;
-    // otherwise a second title appears after Rotate.
+    // Track so disposeBody() can clean it up on orientation rebuild.
     this.bodyOwnedNodes.push(title);
 
     const tabsHandle = createTabs<TabKey>({
@@ -264,22 +384,6 @@ export class UiComponentsDemoScene extends Component {
         this.renderTab(key);
       },
     });
-    const tabsCenterY = height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4;
-    // Top nav-bar background — surface panel matching BottomNav's
-    // depth so the two bars read as the same chrome. Painted BEFORE
-    // tabsHandle so it lives z-below the Tabs node and its mask.
-    const TOP_BAR_PANEL_H = TAB_BAR_HEIGHT + 12; // Tabs node UITransform = height + DIVIDER_GUTTER
-    const topBarBg = new Node('TopBar_bg');
-    const tbUi = topBarBg.addComponent(UITransform);
-    tbUi.setContentSize(bodyAreaWidth, TOP_BAR_PANEL_H);
-    const tbG = topBarBg.addComponent(Graphics);
-    tbG.fillColor = hexToColor(theme.colors.surface ?? theme.colors.background);
-    tbG.rect(-bodyAreaWidth / 2, -TOP_BAR_PANEL_H / 2, bodyAreaWidth, TOP_BAR_PANEL_H);
-    tbG.fill();
-    topBarBg.setPosition(bodyAreaCenterX, tabsCenterY);
-    this.uiRoot.addChild(topBarBg);
-    this.bodyOwnedNodes.push(topBarBg);
-
     tabsHandle.node.setPosition(bodyAreaCenterX, tabsCenterY);
     this.uiRoot.addChild(tabsHandle.node);
     this.bodyHandles.push(tabsHandle);
@@ -296,7 +400,7 @@ export class UiComponentsDemoScene extends Component {
     });
     themeToggleBtn.node.setPosition(
       bodyAreaCenterX + bodyAreaWidth / 2 - 22,
-      height / 2 - TITLE_HEIGHT - TAB_BAR_HEIGHT / 2 - 4,
+      titleCenterY,
     );
     this.uiRoot.addChild(themeToggleBtn.node);
     this.bodyHandles.push(themeToggleBtn);
@@ -309,42 +413,28 @@ export class UiComponentsDemoScene extends Component {
     const body = new Node('UiDemo_body');
     const bodyUi = body.addComponent(UITransform);
     const bodyHeight = isLandscape
-      ? height - TITLE_HEIGHT - TAB_BAR_HEIGHT - 12
-      : height - TITLE_HEIGHT - TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT - 12;
+      ? height - TOP_BAR_H - 12
+      : height - TOP_BAR_H - BOTTOM_NAV_HEIGHT - 12;
     bodyUi.setContentSize(bodyAreaWidth, bodyHeight);
     // Vertical center: in portrait we give up height for both the
     // top-fixed stack (title + tabs) and the bottom-fixed BottomNav.
     // In landscape only the top stack exists; BottomNav slot is 0.
     const bodyCenterY = isLandscape
-      ? -(TITLE_HEIGHT + TAB_BAR_HEIGHT) / 2 - 4
-      : -(TITLE_HEIGHT + TAB_BAR_HEIGHT - BOTTOM_NAV_HEIGHT) / 2 - 4;
+      ? -TOP_BAR_H / 2 - 4
+      : -(TOP_BAR_H - BOTTOM_NAV_HEIGHT) / 2 - 4;
     body.setPosition(bodyAreaCenterX, bodyCenterY);
 
-    // Outer body panel — surface1 fill + goldDim border (same hue
-    // as the Tabs hairline divider). Rendered BEFORE the body node
-    // so it sits z-below the Mask + ScrollView. Slightly larger
-    // than body so the gold edge shows around the viewport.
-    const PANEL_INSET = 2;
-    const panelW = bodyAreaWidth + PANEL_INSET * 2;
-    const panelH = bodyHeight + PANEL_INSET * 2;
+    // Outer body panel — surface1 fill, NO border. The boundary
+    // between top chrome and body is owned by the Tabs' bottom
+    // hairline divider; adding a panel border on top of it produced
+    // a visible "double line" effect.
     const bodyPanelBg = new Node('UiDemo_body_panel_bg');
     const bpUi = bodyPanelBg.addComponent(UITransform);
-    bpUi.setContentSize(panelW, panelH);
+    bpUi.setContentSize(bodyAreaWidth, bodyHeight);
     const bpG = bodyPanelBg.addComponent(Graphics);
     bpG.fillColor = hexToColor(theme.colors.surface1 ?? theme.colors.surface);
-    const bpAny = bpG as unknown as {
-      roundRect?: (x: number, y: number, w: number, h: number, r: number) => void;
-    };
-    if (typeof bpAny.roundRect === 'function') {
-      bpAny.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-    }
+    bpG.rect(-bodyAreaWidth / 2, -bodyHeight / 2, bodyAreaWidth, bodyHeight);
     bpG.fill();
-    bpG.strokeColor = hexToColor(theme.colors.goldDim ?? theme.colors.border);
-    bpG.lineWidth = 1;
-    if (typeof bpAny.roundRect === 'function') {
-      bpAny.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-    }
-    bpG.stroke();
     bodyPanelBg.setPosition(bodyAreaCenterX, bodyCenterY);
     this.uiRoot.addChild(bodyPanelBg);
     this.bodyOwnedNodes.push(bodyPanelBg);
@@ -360,6 +450,8 @@ export class UiComponentsDemoScene extends Component {
     this.uiRoot.addChild(body);
     this.bodyNode = body;
     this.bodyScroll = bodyScroll;
+    this.bodyViewportHeight = bodyHeight;
+    this.bodyContentX = 0; // bodyContent is body's CHILD, so its x=0 in body-local
     this.bodyOwnedNodes.push(body);
 
     // bodyContent: anchor (0.5, 0.5) keeps tab renderer's existing
@@ -369,7 +461,7 @@ export class UiComponentsDemoScene extends Component {
     const bodyContentUi = bodyContent.addComponent(UITransform);
     bodyContentUi.setContentSize(bodyAreaWidth, BODY_CONTENT_HEIGHT);
     bodyContentUi.setAnchorPoint(0.5, 0.5);
-    bodyContent.setPosition(0, bodyHeight / 2 - BODY_CONTENT_HEIGHT / 2, 0);
+    bodyContent.setPosition(this.bodyContentX, bodyHeight / 2 - BODY_CONTENT_HEIGHT / 2, 0);
     body.addChild(bodyContent);
     bodyScroll.content = bodyContent;
     this.bodyContentNode = bodyContent;
@@ -406,7 +498,10 @@ export class UiComponentsDemoScene extends Component {
         logoText: 'U',
         items,
         activeKey: this.appNavKey,
-        profile: { name: 'Brian', userId: '10000192', avatarText: 'B' },
+        // No `profile` here — user info now lives in TopBar's left
+        // edge (built in build()), shared across portrait/landscape
+        // so the player's name/id is always visible regardless of
+        // which nav presentation is active.
         onChange: (k) => { this.appNavKey = k; },
       });
       // Anchor sidebar's center at canvas-left + SIDEBAR_WIDTH/2.
@@ -431,6 +526,12 @@ export class UiComponentsDemoScene extends Component {
     if (!this.bodyNode || !this.bodyContentNode) return;
     this.disposeTabContent();
 
+    // Reset bodyContent to the default height BEFORE the tab renders.
+    // Tabs that needed extra height (Live Ops) might have grown it
+    // last time around; without this reset, switching back to a
+    // smaller tab leaves a tall empty void below its content.
+    this.applyContentHeight(BODY_CONTENT_HEIGHT);
+
     // Tab content mounts to bodyContentNode (the scrollable inner
     // node), NOT bodyNode (the fixed viewport). ctx.height is the
     // content's fixed designed height, NOT the viewport height —
@@ -443,6 +544,7 @@ export class UiComponentsDemoScene extends Component {
       register: (h) => this.bodyHandles.push(h),
       registerNode: (n) => this.bodyOwnedNodes.push(n),
       uiRoot: this.uiRoot!,
+      setContentHeight: (h: number) => this.applyContentHeight(h),
     };
 
     switch (key) {
@@ -462,6 +564,20 @@ export class UiComponentsDemoScene extends Component {
     // user sees the start of the new tab rather than wherever the
     // previous tab left the scroll position.
     if (this.bodyScroll) this.bodyScroll.scrollToTop(0);
+  }
+
+  /** Resize bodyContent so the outer body ScrollView can scroll the
+   *  full extent of the active tab's content. Keeps the TOP of
+   *  bodyContent flush with the TOP of the body viewport so existing
+   *  tab y-math (`y = ctx.height/2 - offset`) stays valid as long as
+   *  the tab uses the height it requested. */
+  private applyContentHeight(h: number): void {
+    const node = this.bodyContentNode;
+    if (!node) return;
+    const ui = node.getComponent(UITransform);
+    if (!ui) return;
+    ui.setContentSize(ui.width, h);
+    node.setPosition(this.bodyContentX, this.bodyViewportHeight / 2 - h / 2, 0);
   }
 
   /** Tear down current tab content but leave the title + tabs +
@@ -551,6 +667,12 @@ interface TabContext {
   /** The scene-level uiRoot — Toast trigger uses this so toasts
    *  paint above tab body content. */
   uiRoot: Node;
+  /** Resize the body content node so the outer body ScrollView can
+   *  scroll the FULL height of the tab's content. Call this at the
+   *  end of a tab renderer when its content exceeds the default
+   *  BODY_CONTENT_HEIGHT. The bodyContent's TOP stays aligned with
+   *  the body viewport's TOP after the resize. */
+  setContentHeight(h: number): void;
 }
 
 // ---- Tab: Inputs ----
@@ -628,10 +750,10 @@ function renderInputsTab(ctx: TabContext): void {
   parent.addChild(sw3.node);
   ctx.register(sw3);
 
-  // Slider.
+  // Slider — continuous (step=1, no visible ticks).
   y -= 50;
   const slider = createSlider({
-    theme, min: 0, max: 100, step: 5, value: 30,
+    theme, min: 0, max: 100, step: 1, value: 30,
     width: Math.min(rowWidth, 320),
     onChange: (v) => console.log('[demo] slider drag', v),
     onCommit: (v) => console.log('[demo] slider commit', v),
@@ -639,6 +761,55 @@ function renderInputsTab(ctx: TabContext): void {
   slider.node.setPosition(0, y);
   parent.addChild(slider.node);
   ctx.register(slider);
+
+  // Slider — stepped (5 stops with visible notches). Demonstrates the
+  // showTicks option for hosts that need a "档位" style picker (raise
+  // amounts, difficulty levels, etc.).
+  y -= 56;
+  const stepped = createSlider({
+    theme, min: 0, max: 100, step: 25, value: 50,
+    width: Math.min(rowWidth, 320),
+    showTicks: true,
+    onChange: (v) => console.log('[demo] stepped slider', v),
+  });
+  stepped.node.setPosition(0, y);
+  parent.addChild(stepped.node);
+  ctx.register(stepped);
+
+  // DropdownMenu — anchored action menu. Host provides a small
+  // trigger button ("更多" here); the menu pops a popover of
+  // actions when tapped. This is the "kebab / overflow / 更多 /
+  // 管理" pattern — NOT a value-picker. (For value-picking, the
+  // Settings tab's `createDropdown` uses a BottomSheet.)
+  y -= 64;
+  y = mountSectionHeader(parent, ctx, y, rowWidth, '下拉菜单 (DropdownMenu)');
+  y -= 12;
+  const moreBtn = createButtonBase({
+    theme,
+    label: '更多 ⌄',
+    variant: 'secondary',
+    width: 96,
+    height: 36,
+    // No-op — DropdownMenu attaches its own `'click'` listener
+    // below and pops the popover from there.
+    onClick: () => {},
+  });
+  moreBtn.node.setPosition(leftEdge + rowWidth - 48, y - 24);
+  parent.addChild(moreBtn.node);
+  ctx.register(moreBtn);
+
+  const moreMenu = createDropdownMenu({
+    trigger: moreBtn.node,
+    theme,
+    items: [
+      { label: '编辑', onSelect: () => console.log('[demo] more → 编辑') },
+      { label: '复制', onSelect: () => console.log('[demo] more → 复制') },
+      { label: '分享', onSelect: () => console.log('[demo] more → 分享') },
+      { label: '归档', onSelect: () => console.log('[demo] more → 归档'), disabled: true },
+      { label: '删除', onSelect: () => console.log('[demo] more → 删除') },
+    ],
+  });
+  ctx.register(moreMenu);
 }
 
 // ---- Tab: Button ----
@@ -1757,9 +1928,19 @@ function renderLiveOpsTab(ctx: TabContext): void {
   const COL_WIDTH = Math.min(width - 40, 480);
   const SECTION_GAP = 20;
 
-  const sv = makeVerticalScrollViewport(parent, ctx, width, height);
-  const scrollContent = sv.content;
-  let cursorY = -16;
+  // Mount directly into bodyContent (the outer body ScrollView's
+  // content). Earlier this tab spawned its OWN inner ScrollView
+  // (makeVerticalScrollViewport), which fought with the outer body
+  // ScrollView for touch events AND stacked Graphics-RECT masks
+  // (Danmaku's mask + Carousel's mask + the inner Mask), giving the
+  // visible "can't scroll all the way" behavior. With the outer
+  // ScrollView handling everything, ctx.setContentHeight(totalH) at
+  // the end is all we need.
+  const scrollContent = parent;
+  // y math mirrors the other tabs: start near the TOP of
+  // bodyContent (anchor 0.5, 0.5), decrement downward.
+  const topY = height / 2;
+  let cursorY = topY - 16;
 
   // Banner: 4 kinds stacked.
   cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '系统横幅 (Banner)');
@@ -1817,7 +1998,6 @@ function renderLiveOpsTab(ctx: TabContext): void {
     width: 180,
     height: 40,
     onClick: () => {
-      // Spawn the floater above the button.
       showFloatingText({
         parent: scrollContent,
         theme,
@@ -1834,7 +2014,7 @@ function renderLiveOpsTab(ctx: TabContext): void {
   ctx.register(floatBtn);
   cursorY -= 40;
 
-  // Danmaku (Phase G5)
+  // Danmaku.
   cursorY -= SECTION_GAP;
   cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '弹幕 (Danmaku)');
   cursorY -= 8;
@@ -1852,9 +2032,6 @@ function renderLiveOpsTab(ctx: TabContext): void {
   ctx.register(danmaku);
   cursorY -= danmakuH;
 
-  // Trigger button: pushes a random message into the danmaku layer.
-  // Each tap fires N pushes back-to-back so lanes / queue fill up
-  // realistically — single-push doesn't demo the scheduling.
   const danmakuSamples = [
     { text: '🎉 GG！绝杀！', color: theme.colors.success },
     { text: '让我看看', color: theme.colors.textPrimary },
@@ -1884,11 +2061,7 @@ function renderLiveOpsTab(ctx: TabContext): void {
   ctx.register(danmakuBtn);
   cursorY -= 40;
 
-  // Carousel: 4 placeholder activity slides. Each slide is a Node
-  // containing a Banner — dogfoods the kit's own primitive and
-  // gives us themed tint + title for free, without exposing
-  // createBackground / applyRoundedBackground from the library
-  // surface just for this demo.
+  // Carousel: 4 placeholder activity slides.
   cursorY -= SECTION_GAP;
   cursorY = mountSectionHeader(scrollContent, ctx, cursorY, COL_WIDTH, '轮播 (Carousel)');
   cursorY -= 8;
@@ -1944,7 +2117,10 @@ function renderLiveOpsTab(ctx: TabContext): void {
   ctx.register(rich);
   cursorY -= richH;
 
-  sv.setContentHeight(-cursorY + 32);
+  // Grow bodyContent so the outer body ScrollView can scroll the
+  // full extent of this tab's content. +40 trailing pad gives the
+  // last item breathing room at max scroll.
+  ctx.setContentHeight(topY - cursorY + 40);
 }
 
 // ---- Tab: Guide (Phase G4) ----

@@ -31,6 +31,10 @@ interface SeedMessage {
   from: 'self' | 'peer';
   text: string;
   offsetMs?: number;
+  /** Default 'text' (or 'text' wire-form '0'). Pass '2'/'image' for an
+   *  image bubble, '3'/'video' for video, anything else for the
+   *  "unknown type" bubble. See message-view-model.classifyBubble. */
+  messageType?: string;
 }
 
 /** Per-channel seed configuration consumed at construction time. */
@@ -73,6 +77,43 @@ export const DEFAULT_DEMO_SEEDS: DemoChannelSeed[] = [
       { from: 'peer', text: '欢迎来到 PrivChat Cocos demo!', offsetMs: -60_000 },
       { from: 'self', text: '我已经接进来了。', offsetMs: -50_000 },
       { from: 'peer', text: '试试发条消息吧 — 这是 mock 模式，不连服务器。', offsetMs: -2 * 60_000 },
+      // ----- Step A/B demo seeds: 5 message types -----
+      // 1) Text + URL span. Tap → ActionSheet with copy + open browser.
+      {
+        from: 'peer',
+        text: '官方网站在这里 https://privchat.example.com 看看吧',
+        offsetMs: -45_000,
+      },
+      // 2) Text + phone-number span. Tap → ActionSheet with copy.
+      {
+        from: 'self',
+        text: '客服电话 400-800-1234 工作日 9-18 点',
+        offsetMs: -40_000,
+      },
+      // 3) Image message. Tap → image viewer overlay.
+      {
+        from: 'peer',
+        messageType: 'image',
+        text: 'https://picsum.photos/id/1015/600/400',
+        offsetMs: -30_000,
+      },
+      // 4) Video message. Tap → video player overlay (cc.VideoPlayer).
+      {
+        from: 'peer',
+        messageType: 'video',
+        text: JSON.stringify({
+          url: 'https://www.w3schools.com/html/mov_bbb.mp4',
+          thumbnail: 'https://picsum.photos/id/1043/600/400',
+        }),
+        offsetMs: -20_000,
+      },
+      // 5) Unsupported type → "未知类型消息" placeholder.
+      {
+        from: 'peer',
+        messageType: 'system',
+        text: '系统消息 payload',
+        offsetMs: -10_000,
+      },
     ],
   },
   {
@@ -120,6 +161,7 @@ export class DemoMockAdapter implements PrivchatClientAdapter {
         rec(seed, {
           from_uid: s.from === 'self' ? SELF_UID : seed.peerUid,
           content: s.text,
+          message_type: s.messageType ?? 'text',
           status: s.from === 'self' ? 'sent' : 'received',
           timestamp: NOW + (s.offsetMs ?? 0),
         }),

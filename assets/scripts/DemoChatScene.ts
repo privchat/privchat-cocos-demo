@@ -1,16 +1,18 @@
-import { Component, Node, _decorator } from 'cc';
+import { Component, Node, SpriteFrame, Texture2D, _decorator } from 'cc';
 import {
   PrivchatClient,
   PrivchatCocos,
   PrivchatDarkTheme,
   SdkFriendsSource,
+  createPlatformAuthClient,
   type FriendVM,
   type FriendsSource,
+  type PlatformAuthClient,
   type ThemeConfig,
 } from '@privchat/cocos';
 import { DemoMockAdapter } from './DemoMockAdapter';
 import { DemoFriendsSource } from './DemoFriendsSource';
-import { createLoginPage, type LoginCredentials } from './LoginPage';
+import { createLoginPage, type LoginCredentials, type LoginPageHandle } from './LoginPage';
 import { createMenuPage } from './MenuPage';
 import { createRoomPanel } from './RoomPanel';
 import { createFloatingChatDemo } from './FloatingChatDemo';
@@ -18,24 +20,16 @@ import { createFloatingChatDemo } from './FloatingChatDemo';
 const { ccclass, property } = _decorator;
 
 /**
- * Game-flavored theme for the demo. Spread `PrivchatDarkTheme` first to keep
- * radius / spacing / fontSize defaults, then override the colors that should
- * read as "this is a game", not "default chat library".
+ * Demo theme — uses `PrivchatDarkTheme` as-is. The dark theme is now
+ * derived from the Phase-G UI Kit's BlackGold theme (see chat-theme.ts
+ * `chatThemeFromUiTheme(createBlackGoldTheme(...))`), which gives the
+ * chat surface the same dark / warm-charcoal palette as the rest of
+ * the UI Kit demo. Previously a hand-rolled brown palette (#1a1208 /
+ * #2c1f0f) lived here, but it made the chat read as a different app
+ * from the UI Kit demo — removing it lets every screen share one
+ * consistent BlackGold look.
  */
-const GoldGameTheme: ThemeConfig = {
-  ...PrivchatDarkTheme,
-  colors: {
-    ...PrivchatDarkTheme.colors,
-    background: '#1a1208',
-    surface: '#2c1f0f',
-    primary: '#e8b551',
-    bubbleMine: '#c89a44',
-    bubbleOther: '#3d2e16',
-    textPrimary: '#f5e6c8',
-    textSecondary: '#a08966',
-    danger: '#d9534f',
-  },
-};
+const GoldGameTheme: ThemeConfig = PrivchatDarkTheme;
 
 type Page = 'login' | 'menu' | 'friends' | 'chat' | 'room' | 'floating';
 
@@ -79,6 +73,12 @@ export class DemoChatScene extends Component {
   @property({ tooltip: 'Default Room channelId prefilled in the Room subscription test page.' })
   defaultRoomChannelId = '100';
 
+  @property({
+    tooltip:
+      'privchat-application route-group base URL for PLATFORM auth. Example: http://127.0.0.1:8080/app',
+  })
+  applicationBaseUrl = 'http://127.0.0.1:8080/app';
+
   // chatRoot is the single Node bound in the scene editor — kept under this
   // property name for backward compat with existing scene bindings. It
   // hosts whichever page is currently active.
@@ -87,6 +87,11 @@ export class DemoChatScene extends Component {
 
   private currentPage: Page = 'login';
   private currentMount: { dispose: () => void } | null = null;
+  // Hold the LoginPageHandle separately so afterLogin's catch can call
+  // its setCodeError on validation failure (verify code expired / wrong
+  // / network error) instead of tearing the whole login flow back to
+  // step-1.
+  private loginPage: LoginPageHandle | null = null;
 
   // Session-scoped — survives login → menu → ... navigation. Disposed
   // only on logout or component destroy.
@@ -94,6 +99,7 @@ export class DemoChatScene extends Component {
   private friendsSource: FriendsSource | null = null;
   private mockFriendsSource: DemoFriendsSource | null = null;
   private client: PrivchatClient | null = null;
+  private platformAuth: PlatformAuthClient | null = null;
   private credentials: LoginCredentials | null = null;
   /** Display name surfaced on the menu greeting. Username for real-SDK,
    *  the placeholder string for mock. */
@@ -132,13 +138,35 @@ export class DemoChatScene extends Component {
     const handle = createLoginPage({
       root: this.chatRoot,
       theme: GoldGameTheme,
+      onSendSmsCode: (mobile) => {
+        if (this.useMock) {
+          console.log('[DemoChatScene] sendSmsCode mobile=' + mobile + ' (mock)');
+          return Promise.resolve();
+        }
+        return this.ensurePlatformAuth().sendSmsCode(mobile);
+      },
       onLogin: (creds) => {
         this.credentials = creds;
-        console.log('[DemoChatScene] login submitted username=' + creds.username);
+        console.log(
+          '[DemoChatScene] login submitted mobile=' + creds.mobile + ' smsCode=' + creds.smsCode,
+        );
         void this.afterLogin();
       },
     });
+    this.loginPage = handle;
     this.currentMount = handle;
+  }
+
+  /** Lazy-init the PlatformAuthClient. Re-created on `applicationBaseUrl`
+   *  change between sessions — we don't watch the property at runtime,
+   *  the scene assumes baseUrl is stable for the session. */
+  private ensurePlatformAuth(): PlatformAuthClient {
+    if (!this.platformAuth) {
+      this.platformAuth = createPlatformAuthClient({
+        baseUrl: this.applicationBaseUrl,
+      });
+    }
+    return this.platformAuth;
   }
 
   private async afterLogin(): Promise<void> {
@@ -150,61 +178,75 @@ export class DemoChatScene extends Component {
         this.mockFriendsSource = new DemoFriendsSource();
         this.friendsSource = this.mockFriendsSource;
       }
-      this.sessionLabel = this.credentials?.username || 'mock-user';
+      this.sessionLabel = this.credentials?.mobile || 'mock-user';
       this.showMenu();
       return;
     }
-    // Real-SDK mode — flow mirrors privchat-web's login-page.tsx:
-    //   1. connect WebSocket
-    //   2. rpc(account/auth/login) with username+password → user_id+token
-    //   3. authenticate(user_id, token, device_id) for the L1 session
-    //   4. wrap channel list as FriendsSource for the contact list view
+    // Real-SDK mode — PLATFORM account-mode flow (per ACCOUNT_IDENTITY_
+    // SPEC §3 + TOKEN_UNIFICATION_SPEC §1.2 §8):
+    //   1. POST application /auth/sms-login → unified LoginResponse
+    //   2. connect WebSocket to privchat-server
+    //   3. sdk.authenticate(userId, accessToken, deviceId)
+    //   4. wrap channel list as FriendsSource
+    // accessToken is server-signed and works for HTTP + IM — same
+    // unified token, no separate IM token.
     try {
+      const mobile = this.credentials?.mobile ?? '';
+      const smsCode = this.credentials?.smsCode ?? '';
+      const auth = this.ensurePlatformAuth();
+      const loginResp = await auth.loginWithSms({
+        mobile,
+        smsCode,
+        device: {
+          deviceId: this.deviceId,
+          platform: 'web', // Cocos preview / web build; native builds detect via cc.sys.platform
+          deviceName: 'cocos-creator',
+          appVersion: '0.0.0',
+        },
+      });
+
       const url = normalizeWsUrl(this.serverUrl);
-      // cache must be enabled — bootstrapChannels / openConversation /
-      // observeConversation throw CacheDisabledError without it.
       this.client = new PrivchatClient({
         url,
         cache: { enabled: true, dbName: 'privchat-cocos-demo' },
       });
       await this.client.connect();
-      const username = this.credentials?.username ?? '';
-      const password = this.credentials?.password ?? '';
-      const resp = await this.client.rpcCallTyped<LoginRequest, LoginResponse>(
-        'account/auth/login',
-        {
-          username,
-          password,
-          device_id: this.deviceId,
-          device_info: {
-            device_id: this.deviceId,
-            // Server enum: unknown | ios | android | web | macos | windows | linux | iot.
-            // Cocos preview runs in browser → 'web'. Native builds should
-            // detect via cc.sys.platform and pick ios/android.
-            device_type: 'web',
-            app_id: 'privchat-cocos-demo',
-            device_name: 'cocos-creator',
-            app_version: '0.0.0',
-          },
-        },
-      );
       await this.client.authenticate(
-        String(resp.user_id),
-        resp.token,
-        resp.device_id,
+        String(loginResp.userId),
+        loginResp.accessToken,
+        loginResp.deviceId,
       );
+
       this.friendsSource = new SdkFriendsSource({
         client: this.client,
         channelTypes: [1], // peer channels only
       });
-      this.sessionLabel = username;
+      this.sessionLabel = mobile;
       this.showMenu();
     } catch (err) {
-      console.error('[DemoChatScene] real-SDK login failed:', err);
-      // Fail clean: drop any half-built client so the next login attempt
-      // starts fresh, then return to login screen.
-      this.teardownSession();
-      this.showLogin();
+      console.error('[DemoChatScene] PLATFORM real-mode login failed:', err);
+      // 把后端的 application code → 中文友好提示，然后让 LoginPage 在
+      // OTP 页面上原地显示错误，而不是把整个 session 推倒重来。常见的
+      // 失败场景都不需要回手机号页 —— 用户保持在 OTP 页改验证码 / 用
+      // 「重新发送」就能继续。如果是会话级故障（websocket 起不来等）
+      // 才退到手机号页。
+      const friendly = humanizeAuthError(err);
+      if (friendly.recoverableOnCodeStep && this.loginPage) {
+        this.loginPage.setCodeError(friendly.message);
+        // 部分清理：只丢 client（authenticate 失败可能已 connect
+        // 一半），不动 credentials / loginPage / friendsSource。
+        if (this.client) {
+          const c = this.client as unknown as { disconnect?: () => void; dispose?: () => void };
+          try {
+            if (c.dispose) c.dispose();
+            else if (c.disconnect) c.disconnect();
+          } catch { /* ignore */ }
+          this.client = null;
+        }
+      } else {
+        this.teardownSession();
+        this.showLogin();
+      }
     }
   }
 
@@ -289,6 +331,7 @@ export class DemoChatScene extends Component {
         channelType: friend.channelType,
         theme: GoldGameTheme,
         header,
+        imageLoader: loadRemoteSpriteFrame,
         onError: (err) => console.warn('[DemoChatScene][chat] onError', err),
         onToast: (msg) => console.log('[DemoChatScene][chat] onToast', msg),
       });
@@ -299,6 +342,7 @@ export class DemoChatScene extends Component {
         channelType: friend.channelType,
         theme: GoldGameTheme,
         header,
+        imageLoader: loadRemoteSpriteFrame,
         onError: (err) => console.warn('[DemoChatScene][chat] onError', err),
         onToast: (msg) => console.log('[DemoChatScene][chat] onToast', msg),
       });
@@ -341,6 +385,9 @@ export class DemoChatScene extends Component {
   private disposeCurrent(): void {
     this.currentMount?.dispose();
     this.currentMount = null;
+    // loginPage 引用的就是 login 页面的 LoginPageHandle，离开 login
+    // 后 handle 也已经 dispose；这里同步清掉避免 stale 引用。
+    this.loginPage = null;
   }
 
   /** Drop everything tied to a single login session. Called from logout
@@ -363,23 +410,42 @@ export class DemoChatScene extends Component {
 
 // ----- helpers -----
 
-interface LoginRequest {
-  username: string;
-  password: string;
-  device_id: string;
-  device_info: {
-    device_id: string;
-    device_type: string;
-    app_id: string;
-    device_name: string;
-    app_version: string;
+/** Convert a thrown error from the PLATFORM auth path into a friendly
+ *  Chinese message + a flag telling the caller whether the user can
+ *  retry on the OTP step (vs. needing to fully retry from step-1). */
+function humanizeAuthError(err: unknown): {
+  message: string;
+  recoverableOnCodeStep: boolean;
+} {
+  const e = err as { applicationCode?: number; httpStatus?: number; message?: string };
+  const code = e?.applicationCode;
+  const msg = e?.message ?? '';
+  // application 的 MemberAuthLogic 错误码（业务层校验，回 OTP 重试即可）
+  if (code === 10100) {
+    if (msg.includes('SMS code expired')) {
+      return { message: '验证码已过期，请重新发送', recoverableOnCodeStep: true };
+    }
+    if (msg.includes('Invalid SMS code') || msg.includes('verify code')) {
+      return { message: '验证码错误，请重新输入', recoverableOnCodeStep: true };
+    }
+    if (msg.includes('not sent')) {
+      return { message: '验证码不存在，请先获取验证码', recoverableOnCodeStep: true };
+    }
+    // 其他 10100 业务校验 —— 让用户看到后端原文，至少能猜出问题
+    return { message: msg || '请求参数有误', recoverableOnCodeStep: true };
+  }
+  if (code === 10200 || e?.httpStatus === 429) {
+    return { message: '请求过于频繁，请稍后再试', recoverableOnCodeStep: true };
+  }
+  // 网络层（fetch 失败 / 超时）— OTP 页面可以原地重试
+  if (err instanceof Error && /NetworkError|fetch|timeout|abort/i.test(err.message)) {
+    return { message: '网络异常，请检查后端服务后重试', recoverableOnCodeStep: true };
+  }
+  // 其他未识别错误 —— 回到手机号页让用户重头来
+  return {
+    message: err instanceof Error ? err.message : String(err),
+    recoverableOnCodeStep: false,
   };
-}
-
-interface LoginResponse {
-  user_id: number | string;
-  token: string;
-  device_id: string;
 }
 
 function normalizeWsUrl(input: string): string {
@@ -413,5 +479,53 @@ function generateDeviceId(): string {
     else uuid += hex[Math.floor(Math.random() * 16)];
   }
   return uuid;
+}
+
+/** Demo image loader — fetches a remote URL via `cc.assetManager.loadRemote`
+ *  and converts the resulting Texture2D to a SpriteFrame. Used by the chat
+ *  view for image-message thumbnails and the image viewer overlay.
+ *  Real apps would route through their own CDN / cache layer; this
+ *  helper is intentionally minimal for demo. */
+function loadRemoteSpriteFrame(url: string): Promise<SpriteFrame | undefined> {
+  return new Promise((resolve) => {
+    try {
+      const am = (globalThis as { cc?: { assetManager?: { loadRemote: Function } } }).cc?.assetManager;
+      if (!am) {
+        resolve(undefined);
+        return;
+      }
+      // `cc.assetManager.loadRemote(url, options?, cb)` — pass an ext
+      // hint via the options bag when the URL has no recognized
+      // extension (e.g., picsum.photos query strings).
+      const ext = inferImageExt(url);
+      am.loadRemote(url, { ext }, (err: unknown, asset: Texture2D | unknown) => {
+        if (err || !asset) {
+          console.warn('[DemoChatScene] loadRemote failed', url, err);
+          resolve(undefined);
+          return;
+        }
+        try {
+          const sf = new SpriteFrame();
+          (sf as unknown as { texture: Texture2D }).texture = asset as Texture2D;
+          resolve(sf);
+        } catch (e) {
+          console.warn('[DemoChatScene] SpriteFrame ctor failed', e);
+          resolve(undefined);
+        }
+      });
+    } catch (e) {
+      console.warn('[DemoChatScene] loadRemoteSpriteFrame error', e);
+      resolve(undefined);
+    }
+  });
+}
+
+function inferImageExt(url: string): string {
+  const lower = url.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return '.jpg';
+  if (lower.endsWith('.png')) return '.png';
+  if (lower.endsWith('.webp')) return '.webp';
+  if (lower.endsWith('.gif')) return '.gif';
+  return '.png';
 }
 
