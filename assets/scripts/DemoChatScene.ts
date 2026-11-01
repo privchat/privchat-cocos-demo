@@ -1,10 +1,11 @@
-import { Component, Node, SpriteFrame, Texture2D, _decorator } from 'cc';
+import { Component, Node, SpriteFrame, Texture2D, _decorator, sys } from 'cc';
 import {
   PrivchatClient,
   PrivchatCocos,
   PrivchatDarkTheme,
   SdkFriendsSource,
   createPlatformAuthClient,
+  getOrCreateDeviceId,
   type FriendVM,
   type FriendsSource,
   type PlatformAuthClient,
@@ -67,8 +68,11 @@ export class DemoChatScene extends Component {
   @property({ tooltip: 'Real PrivChat server URL (WebSocket; only used when useMock is false). Examples: ws://127.0.0.1:9080/, wss://im.example.com/ws' })
   serverUrl = 'ws://127.0.0.1:9080/';
 
-  @property({ tooltip: 'Leave empty to auto-generate a UUID at runtime. On real device, host should pass the platform-specific device id.' })
-  deviceId = '';
+  /** Lowercase UUID v4 generated once from a secure random source and
+   *  persisted in `sys.localStorage` by @privchat/cocos; reused for login
+   *  and IM authenticate. Not an inspector property: the server rejects
+   *  any non-canonical id, so it must never be hand-edited. */
+  private deviceId = '';
 
   @property({ tooltip: 'Default Room channelId prefilled in the Room subscription test page.' })
   defaultRoomChannelId = '100';
@@ -114,13 +118,7 @@ export class DemoChatScene extends Component {
       console.error('[DemoChatScene] chatRoot is not assigned in the inspector.');
       return;
     }
-    if (!isValidUuidV4(this.deviceId)) {
-      const old = this.deviceId;
-      this.deviceId = generateDeviceId();
-      console.log(
-        `[DemoChatScene] regenerated deviceId — was "${old || '(empty)'}", now "${this.deviceId}"`,
-      );
-    }
+    this.deviceId = getOrCreateDeviceId({ storage: sys.localStorage });
     this.showLogin();
   }
 
@@ -214,7 +212,7 @@ export class DemoChatScene extends Component {
       await this.client.authenticate(
         String(loginResp.userId),
         loginResp.accessToken,
-        loginResp.deviceId,
+        this.deviceId,
       );
 
       this.friendsSource = new SdkFriendsSource({
@@ -461,24 +459,6 @@ function normalizeWsUrl(input: string): string {
     return fixed;
   }
   return input;
-}
-
-function isValidUuidV4(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(s);
-}
-
-function generateDeviceId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (c?.randomUUID) return c.randomUUID();
-  const hex = '0123456789abcdef';
-  let uuid = '';
-  for (let i = 0; i < 32; i++) {
-    if (i === 8 || i === 12 || i === 16 || i === 20) uuid += '-';
-    if (i === 12) uuid += '4';
-    else if (i === 16) uuid += hex[8 + Math.floor(Math.random() * 4)];
-    else uuid += hex[Math.floor(Math.random() * 16)];
-  }
-  return uuid;
 }
 
 /** Demo image loader — fetches a remote URL via `cc.assetManager.loadRemote`

@@ -29,9 +29,10 @@ Cocos Creator 3.8.8.
 5. In the `DemoChatScene` component fields:
    - `useMock`: ✅ checked (default — uses `DemoMockAdapter` + `DemoFriendsSource`, no server)
    - `serverUrl`: `ws://127.0.0.1:9080/` (only used when `useMock` is unchecked)
-   - `deviceId`: leave empty — the script regenerates a UUID v4 if invalid
    - `defaultRoomChannelId`: `100` (prefilled in the Room subscription panel)
    - `chatRoot`: drag the `ChatRoot` node from Hierarchy
+   - The device id is not a field: `getOrCreateDeviceId()` from `@privchat/cocos` generates a
+     UUID v4 once and persists it in `sys.localStorage`.
 6. Save the scene (`Cmd-S`).
 
 ## Run (mock mode — no server needed)

@@ -355,7 +355,6 @@
     "__prefab": null,
     "useMock": false,
     "serverUrl": "ws://127.0.0.1:9080",
-    "deviceId": "cocos-demo",
     "chatRoot": {
       "__id__": 5
     },

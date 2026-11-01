@@ -177,7 +177,7 @@ export class DemoMockAdapter implements PrivchatClientAdapter {
   sessionSnapshot(): SessionSnapshot {
     return {
       user_id: SELF_UID,
-      device_id: 'demo-device',
+      device_id: '0b6f5c3e-2d1a-4c7b-8e9f-1a2b3c4d5e6f', // mock only; valid v4 literal
       connection_state: 'connected',
       has_access_token: true,
       last_event_sequence_id: 0,
